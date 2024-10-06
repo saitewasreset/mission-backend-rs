@@ -27,18 +27,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - build: stable
+          - build: linux
             os: ubuntu-latest
             rust: stable
-          - build: macos
+            target: x86_64-unknown-linux-gnu
+          - build: macos-x86_64
+            os: macos-latest-large
+            rust: stable
+            target: x86_64-apple-darwin
+          - build: macos-arm64
             os: macos-latest
             rust: stable
+            target: aarch64-apple-darwin
           - build: win-msvc
             os: windows-latest
             rust: stable
+            target: x86_64-pc-windows-msvc
           - build: win-gnu
             os: windows-latest
             rust: stable-x86_64-gnu
+            target: x86_64-pc-windows-gnu
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,24 +56,14 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
 
-      - name: Use Cross
-        if: matrix.os == 'ubuntu-latest' && matrix.target != ''
+      - name: Set target variables
+        shell: bash
         run: |
-          # In the past, new releases of 'cross' have broken CI. So for now, we
-          # pin it. We also use their pre-compiled binary releases because cross
-          # has over 100 dependencies and takes a bit to compile.
-          dir="$RUNNER_TEMP/cross-download"
-          mkdir "$dir"
-          echo "$dir" >> $GITHUB_PATH
-          cd "$dir"
-          curl -LO "https://github.com/cross-rs/cross/releases/download/$CROSS_VERSION/cross-x86_64-unknown-linux-musl.tar.gz"
-          tar xf cross-x86_64-unknown-linux-musl.tar.gz
-          echo "CARGO=cross" >> $GITHUB_ENV
           echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
           echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
       - name: Install packages (MacOS)
-        if: matrix.os == 'macos-latest'
+        if: (matrix.os == 'macos-latest') || (matrix.os == 'macos-latest-large')
         run: |
           brew install libpq
           brew link --force libpq
