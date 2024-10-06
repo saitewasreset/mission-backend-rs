@@ -76,11 +76,17 @@ jobs:
           echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
           echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
+      - name: Install packages (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install libpq
+          brew link --force libpq
+
       - name: Build
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             RUSTFLAGS='-L C:\Program Files\PostgreSQL\14\lib' ${{ env.CARGO }} build --verbose
           else
-            ${{ env.CARGO }} build --verbose
+            PATH="/usr/local/opt/libpq/bin:$PATH" ${{ env.CARGO }} build --verbose
           fi

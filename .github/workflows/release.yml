@@ -137,12 +137,24 @@ jobs:
         run: |
           echo "cargo command is: ${{ env.CARGO }}"
           echo "target flag is: ${{ env.TARGET_FLAGS }}"
+
           echo "target dir is: ${{ env.TARGET_DIR }}"
+
+      - name: Install packages (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install libpq
+          brew link --force libpq
 
       - name: Build release binary
         shell: bash
         run: |
-          ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            RUSTFLAGS='-L C:\Program Files\PostgreSQL\14\lib' ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+          else
+            PATH="/usr/local/opt/libpq/bin:$PATH" ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+          fi
+
           bin_dir="target/${{ matrix.target }}/release/"
           echo "BIN_DIR=$bin_dir" >> $GITHUB_ENV
 
