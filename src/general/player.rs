@@ -172,7 +172,7 @@ fn generate(
     let mut prev_player_data_map = HashMap::with_capacity(mission_list_by_player.len());
 
     for (player_id, player_mission_list) in mission_list_by_player {
-        let prev_count = match player_mission_list.len() * 9 / 10 {
+        let prev_count = match player_mission_list.len() * 8 / 10 {
             0..10 => 10,
             x => x,
         };
