@@ -61,22 +61,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - build: stable
+          - build: linux
             os: ubuntu-latest
             rust: stable
             target: x86_64-unknown-linux-gnu
-            strip: x86_64-linux-gnu-strip
           - build: macos
             os: macos-latest
-            rust: nightly
+            rust: stable
             target: x86_64-apple-darwin
           - build: win-msvc
             os: windows-latest
-            rust: nightly
+            rust: stable
             target: x86_64-pc-windows-msvc
           - build: win-gnu
             os: windows-latest
-            rust: nightly-x86_64-gnu
+            rust: stable-x86_64-gnu
             target: x86_64-pc-windows-gnu
 
     steps:
@@ -88,21 +87,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
-
-      - name: Use Cross
-        if: matrix.os == 'ubuntu-latest' && matrix.target != ''
-        shell: bash
-        run: |
-          # In the past, new releases of 'cross' have broken CI. So for now, we
-          # pin it. We also use their pre-compiled binary releases because cross
-          # has over 100 dependencies and takes a bit to compile.
-          dir="$RUNNER_TEMP/cross-download"
-          mkdir "$dir"
-          echo "$dir" >> $GITHUB_PATH
-          cd "$dir"
-          curl -LO "https://github.com/cross-rs/cross/releases/download/$CROSS_VERSION/cross-x86_64-unknown-linux-musl.tar.gz"
-          tar xf cross-x86_64-unknown-linux-musl.tar.gz
-          echo "CARGO=cross" >> $GITHUB_ENV
 
       - name: Set target variables
         shell: bash
@@ -147,7 +131,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$ARCHIVE"
-          cp -r config "$ARCHIVE"/
+          cp -r config/* "$ARCHIVE"/
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp "$BIN_DIR/load_kpi.exe" "$ARCHIVE"/
             cp "$BIN_DIR/load_mapping.exe" "$ARCHIVE"/
