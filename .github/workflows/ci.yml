@@ -86,7 +86,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            PATH="C:\Program Files\PostgreSQL\14\lib:$PATH" ${{ env.CARGO }} build --verbose
+            export PATH="/c/Program Files/PostgreSQL/14/lib:/c/Program Files/PostgreSQL/14/bin:$PATH"
+            echo $PATH 
+            ${{ env.CARGO }} build --verbose
           else
             PATH="/usr/local/opt/libpq/bin:$PATH" ${{ env.CARGO }} build --verbose
           fi
