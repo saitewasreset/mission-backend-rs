@@ -46,10 +46,10 @@ jobs:
             os: macos-latest
             rust: stable
           - build: win-msvc
-            os: windows-2022
+            os: windows-latest
             rust: stable
           - build: win-gnu
-            os: windows-2022
+            os: windows-latest
             rust: stable-x86_64-gnu
     steps:
       - name: Checkout repository
@@ -77,4 +77,10 @@ jobs:
           echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
 
       - name: Build
-        run: ${{ env.CARGO }} build --verbose
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            RUSTFLAGS='-L C:\Program Files\PostgreSQL\14\lib' ${{ env.CARGO }} build --verbose
+          else
+            ${{ env.CARGO }} build --verbose
+          fi
