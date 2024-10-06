@@ -10,6 +10,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub struct DeltaData<T: Serialize> {
     prev: T,
+    recent: T,
     total: T,
 }
 

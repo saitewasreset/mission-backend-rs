@@ -129,7 +129,7 @@ fn generate(
         .iter()
         .map(|item| item.mission_info.mission_time as i64)
         .sum::<i64>();
-    let prev_count = match valid_game_count * 9 / 10 {
+    let prev_count = match valid_game_count * 8 / 10 {
         0..10 => 10,
         x => x,
     };
@@ -141,14 +141,24 @@ fn generate(
     };
 
     let prev_mission_list = &cached_mission_list[0..prev_count];
+    let recent_mission_list = &cached_mission_list[prev_count..];
 
     let prev_total_mission_time = prev_mission_list
         .iter()
         .map(|item| item.mission_info.mission_time as u64)
         .sum::<u64>();
 
+    let recent_total_mission_time = recent_mission_list
+        .iter()
+        .map(|item| item.mission_info.mission_time as u64)
+        .sum::<u64>();
+
     let average_mission_time = DeltaData {
         prev: (prev_total_mission_time as f64 / prev_count as f64) as i16,
+        recent: match recent_mission_list.len() {
+            0 => (total_total_mission_time as f64 / valid_game_count as f64) as i16,
+            _ => (recent_total_mission_time as f64 / recent_mission_list.len() as f64) as i16,
+        },
         total: (total_total_mission_time as f64 / valid_game_count as f64) as i16,
     };
 
@@ -195,8 +205,25 @@ fn generate(
         })
         .count();
 
+    let recent_open_room_count = recent_mission_list
+        .iter()
+        .filter(|item| {
+            for player_info in &item.player_info {
+                if !watchlist_player_id_set.contains(&player_info.player_id) {
+                    return true;
+                }
+            }
+
+            return false;
+        })
+        .count();
+
     let open_room_rate = DeltaData {
         prev: prev_open_room_count as f64 / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_open_room_count as f64 / valid_game_count as f64,
+            _ => recent_open_room_count as f64 / recent_mission_list.len() as f64,
+        },
         total: total_open_room_count as f64 / valid_game_count as f64,
     };
 
@@ -210,8 +237,17 @@ fn generate(
         .filter(|item| item.mission_info.result == 0)
         .count();
 
+    let recent_pass_count = recent_mission_list
+        .iter()
+        .filter(|item| item.mission_info.result == 0)
+        .count();
+
     let pass_rate = DeltaData {
         prev: prev_pass_count as f64 / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_pass_count as f64 / valid_game_count as f64,
+            _ => recent_pass_count as f64 / recent_mission_list.len() as f64,
+        },
         total: total_pass_count as f64 / valid_game_count as f64,
     };
 
@@ -225,8 +261,17 @@ fn generate(
         .map(|item| hazard_id_to_real(item.mission_info.hazard_id))
         .sum::<f64>();
 
+    let recent_difficulty = recent_mission_list
+        .iter()
+        .map(|item| hazard_id_to_real(item.mission_info.hazard_id))
+        .sum::<f64>();
+
     let average_difficulty = DeltaData {
         prev: prev_difficulty / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_difficulty / valid_game_count as f64,
+            _ => recent_difficulty / recent_mission_list.len() as f64,
+        },
         total: total_difficulty / valid_game_count as f64,
     };
 
@@ -260,8 +305,27 @@ fn generate(
         })
         .sum::<i32>();
 
+    let recent_kill_num = recent_mission_list
+        .iter()
+        .map(|item| {
+            item.kill_info
+                .values()
+                .map(|player_data| {
+                    player_data
+                        .values()
+                        .map(|pack| pack.total_amount)
+                        .sum::<i32>()
+                })
+                .sum::<i32>()
+        })
+        .sum::<i32>();
+
     let average_kill_num = DeltaData {
         prev: (prev_kill_num as f64 / prev_count as f64) as i16,
+        recent: match recent_mission_list.len() {
+            0 => (total_kill_num as f64 / valid_game_count as f64) as i16,
+            _ => (recent_kill_num as f64 / recent_mission_list.len() as f64) as i16,
+        },
         total: (total_kill_num as f64 / valid_game_count as f64) as i16,
     };
 
@@ -295,8 +359,27 @@ fn generate(
         })
         .sum::<f64>();
 
+    let recent_damage = recent_mission_list
+        .iter()
+        .map(|item| {
+            item.damage_info
+                .values()
+                .map(|player_data| {
+                    player_data
+                        .values()
+                        .map(|pack| pack.total_amount)
+                        .sum::<f64>()
+                })
+                .sum::<f64>()
+        })
+        .sum::<f64>();
+
     let average_damage = DeltaData {
         prev: prev_damage / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_damage / valid_game_count as f64,
+            _ => recent_damage / recent_mission_list.len() as f64,
+        },
         total: total_damage / valid_game_count as f64,
     };
 
@@ -324,8 +407,24 @@ fn generate(
         })
         .sum::<f64>();
 
+    let recent_average_death_num_per_player = recent_mission_list
+        .iter()
+        .map(|item| &item.player_info)
+        .map(|player_info_list| {
+            player_info_list
+                .iter()
+                .map(|player_info| player_info.death_num as f64)
+                .sum::<f64>()
+                / player_info_list.len() as f64
+        })
+        .sum::<f64>();
+
     let average_death_num_per_player = DeltaData {
         prev: prev_average_death_num_per_player / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_avergae_death_num_per_player / valid_game_count as f64,
+            _ => recent_average_death_num_per_player / recent_mission_list.len() as f64,
+        },
         total: total_avergae_death_num_per_player / valid_game_count as f64,
     };
 
@@ -349,8 +448,22 @@ fn generate(
         })
         .sum::<f64>();
 
+    let recent_minerals_mined = recent_mission_list
+        .iter()
+        .map(|item| {
+            item.resource_info
+                .values()
+                .map(|player_resource_info| player_resource_info.values().sum::<f64>())
+                .sum::<f64>()
+        })
+        .sum::<f64>();
+
     let average_minerals_mined = DeltaData {
         prev: prev_minerals_mined / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_minerals_mined / valid_game_count as f64,
+            _ => recent_minerals_mined / recent_mission_list.len() as f64,
+        },
         total: total_minerals_mined / valid_game_count as f64,
     };
 
@@ -376,8 +489,23 @@ fn generate(
         })
         .sum::<f64>();
 
+    let recent_supply_count_per_player = recent_mission_list
+        .iter()
+        .map(|item| {
+            item.supply_info
+                .values()
+                .map(|player_supply_list| player_supply_list.len() as f64)
+                .sum::<f64>()
+                / item.player_info.len() as f64
+        })
+        .sum::<f64>();
+
     let average_supply_count_per_player = DeltaData {
         prev: prev_supply_count_per_player / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_supply_count_per_player / valid_game_count as f64,
+            _ => recent_supply_count_per_player / recent_mission_list.len() as f64,
+        },
         total: total_supply_count_per_player / valid_game_count as f64,
     };
 
@@ -391,8 +519,17 @@ fn generate(
         .map(|item| item.mission_info.reward_credit)
         .sum::<f64>();
 
+    let recent_reward_credit = recent_mission_list
+        .iter()
+        .map(|item| item.mission_info.reward_credit)
+        .sum::<f64>();
+
     let average_reward_credit = DeltaData {
         prev: prev_reward_credit / prev_count as f64,
+        recent: match recent_mission_list.len() {
+            0 => total_reward_credit / valid_game_count as f64,
+            _ => recent_reward_credit / recent_mission_list.len() as f64,
+        },
         total: total_reward_credit / valid_game_count as f64,
     };
 
