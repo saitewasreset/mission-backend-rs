@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            RUSTFLAGS='-L C:\Program Files\PostgreSQL\14\lib' ${{ env.CARGO }} build --verbose
+            PATH="C:\Program Files\PostgreSQL\14\lib:$PATH" ${{ env.CARGO }} build --verbose
           else
             PATH="/usr/local/opt/libpq/bin:$PATH" ${{ env.CARGO }} build --verbose
           fi
