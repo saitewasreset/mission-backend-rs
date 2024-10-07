@@ -288,7 +288,7 @@ async fn get_weight_table(app_state: Data<AppState>) -> Json<APIResponse<Vec<API
 
     let mut result = Vec::new();
 
-    for entity_game_id in entity_game_id_to_name.values() {
+    for entity_game_id in entity_game_id_to_name.keys() {
         let priority = *kpi_config
             .priority_table
             .get(entity_game_id)
