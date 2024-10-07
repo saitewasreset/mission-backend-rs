@@ -43,6 +43,24 @@ interface Response<T> {
 
 对于每一个 API，下文将只给出`T`的类型。
 
+## Mapping（`./api/mapping`）
+
+`T = APIMapping`
+
+```typescript
+interface APIMapping {
+  character: Record<string, string>;
+  entity: Record<string, string>;
+  entityBlacklist: string[];
+  entityCombine: Record<string, string>;
+  missionType: Record<string, string>;
+  resource: Record<string, string>;
+  weapon: Record<string, string>;
+  weaponCombine: Record<string, string>;
+  weaponHero: Record<string, string>;
+}
+```
+
 ## 概览（`./api/general`）
 
 ### 任务概览(`./`)
@@ -330,7 +348,7 @@ interface WeaponDamageInfo {
 
 ```typescript
 type T = {
-  info: Record<string, PlayerResourceData>; // player_name -> PlayerResourceInfo
+  data: Record<string, PlayerResourceData>; // player_name -> PlayerResourceInfo
   resourceMapping: Record<string, string>; // resource_game_id -> 资源中文名
 };
 ```
@@ -438,7 +456,6 @@ interface MissionKPIInfo {
   missionId: number;
   beginTimestamp: number;
   playerIndex: number; // 该玩家在该任务中的玩家指数
-  characterFactor: number; // 角色修正因子
   missionKPI: number; // 原始KPI
 }
 
@@ -467,5 +484,45 @@ interface PlayerBotKPIInfo {
 type T = Record<
   string, // player_name
   PlayerBotKPIInfo
+>;
+```
+
+## 信息（`./info`）
+
+### 路人信息（`./brothers`）
+
+`T = BrothersData`
+
+```typescript
+interface OverallBrothersInfo {
+  unfamiliarPlayerCount: number;
+  playerSpotPercent: number;
+  playerAverageSpot: number;
+  playerGeTwoPercent: number;
+}
+
+interface BrotherInfo {
+  gameCount: number;
+  presenceTime: number;
+  lastSpot: number;
+  spotCount: number;
+  timestampList: number[];
+}
+
+interface BrothersData {
+  overall: OverallBrothersInfo;
+  player: Record<string, BrotherInfo>;
+}
+```
+
+### 武器偏好信息（`./weapon_preference`）
+
+```typescript
+type T = Record<
+  string, // character_game_id
+  {
+    0: [string, number][]; // (weapon_game_id, preference_index)
+    1: [string, number][];
+  }
 >;
 ```
