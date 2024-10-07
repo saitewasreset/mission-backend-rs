@@ -30,6 +30,8 @@ pub const KPI_VERSION: &str = "0.3.0";
 
 pub const RE_SPOT_TIME_THRESHOLD: i64 = 60 * 60 * 24;
 
+pub const INVALID_MISSION_TIME_THRESHOLD: i16 = 60 * 5;
+
 pub const CORRECTION_ITEMS: &[KPIComponent] = &[
     KPIComponent::Damage,
     KPIComponent::Priority,

@@ -4,13 +4,15 @@ use actix_web::{
     HttpRequest,
 };
 
-use crate::db::mission_log::*;
+use crate::db::{mission_log::*, models::*, schema::*};
+use crate::INVALID_MISSION_TIME_THRESHOLD;
 use crate::{db, DbPool};
 use crate::{APIResponse, AppState};
+use diesel::prelude::*;
 use log::{error, info, warn};
 use serde::Serialize;
-use std::io::Read;
 use std::time::{Duration, Instant};
+use std::{collections::HashMap, io::Read};
 
 #[derive(Serialize)]
 pub struct LoadResult {
@@ -115,5 +117,75 @@ fn load_mission_db(
         }
     }
 
+    mark_invalid_mission(db_pool)?;
+
     Ok((begin.elapsed(), load_count))
+}
+
+fn mark_invalid_mission(db_pool: Data<DbPool>) -> Result<(), ()> {
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("cannot get db connection from pool: {}", e);
+            return Err(());
+        }
+    };
+
+    let all_mission = match mission::table.select(Mission::as_select()).load(&mut conn) {
+        Ok(x) => x,
+        Err(e) => {
+            error!("cannot get mission list: {}", e);
+            return Err(());
+        }
+    };
+
+    let mission_player_info = match player_info::table
+        .select(PlayerInfo::as_select())
+        .load(&mut conn)
+    {
+        Ok(x) => x,
+        Err(e) => {
+            error!("cannot get player info list: {}", e);
+            return Err(());
+        }
+    };
+
+    let player_info_by_mission = mission_player_info
+        .grouped_by(&all_mission)
+        .into_iter()
+        .zip(all_mission)
+        .map(|(player_info_list, mission)| ((mission.id, mission.mission_time), player_info_list))
+        .collect::<HashMap<_, _>>();
+
+    let mut inavlid_mission_id_to_reason: HashMap<i32, &str> = HashMap::new();
+
+    for ((mission_id, mission_time), player_list) in player_info_by_mission {
+        if mission_time < INVALID_MISSION_TIME_THRESHOLD {
+            inavlid_mission_id_to_reason.insert(mission_id, "任务时间过短");
+            continue;
+        }
+
+        if player_list.len() <= 1 {
+            inavlid_mission_id_to_reason.insert(mission_id, "单人游戏");
+            continue;
+        }
+    }
+
+    for (mission_id, reason) in inavlid_mission_id_to_reason {
+        if let Err(e) = diesel::insert_into(mission_invalid::table)
+            .values((
+                mission_invalid::mission_id.eq(mission_id),
+                mission_invalid::reason.eq(reason),
+            ))
+            .on_conflict(mission_invalid::mission_id)
+            .do_update()
+            .set(mission_invalid::reason.eq(reason))
+            .execute(&mut conn)
+        {
+            error!("cannot insert into invalid mission: {}", e);
+            return Err(());
+        }
+    }
+
+    Ok(())
 }
