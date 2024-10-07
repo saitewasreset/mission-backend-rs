@@ -126,29 +126,24 @@ async fn get_gamma_info(
     .unwrap();
 
     match result {
-        Ok(x) => Json(APIResponse::ok(
-            x.character_correction_factor
-                .iter()
-                .map(|(character_kpi_type, character_info)| {
-                    (
-                        character_kpi_type.to_string(),
-                        character_info
-                            .iter()
-                            .map(|(character_id, info)| {
-                                (
-                                    character_id.to_string(),
-                                    GammaInnerInfo {
-                                        player_index: info.player_index,
-                                        value: info.value,
-                                        ratio: info.correction_factor,
-                                    },
-                                )
-                            })
-                            .collect(),
-                    )
-                })
-                .collect::<HashMap<_, _>>(),
-        )),
+        Ok(x) => {
+            let mut result: HashMap<String, HashMap<String, GammaInnerInfo>> = HashMap::new();
+            for (character_kpi_type, character_component) in x.character_correction_factor {
+                for (kpi_component, character_data) in character_component {
+                    result
+                        .entry(kpi_component.to_string())
+                        .or_default()
+                        .entry(character_kpi_type.to_string())
+                        .or_insert(GammaInnerInfo {
+                            player_index: character_data.player_index,
+                            value: character_data.value,
+                            ratio: character_data.correction_factor,
+                        });
+                }
+            }
+
+            Json(APIResponse::ok(result))
+        }
         Err(()) => Json(APIResponse::internal_error()),
     }
 }
