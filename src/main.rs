@@ -138,7 +138,7 @@ fn read_file_env(target_env: &str) -> Option<String> {
     let mut result: Option<String> = None;
     if let Ok(file_path) = env::var(format!("{}_FILE", target_env)) {
         match fs::read_to_string(&file_path) {
-            Ok(val) => result = Some(val),
+            Ok(val) => result = Some(val.trim().to_string()),
             Err(e) => {
                 warn!("cannot read env file {}: {}", file_path, e)
             }
