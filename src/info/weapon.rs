@@ -183,7 +183,7 @@ async fn get_weapon_preference(
             }
         };
 
-        let charcter_id_to_game_id = character_list
+        let character_id_to_game_id = character_list
             .into_iter()
             .map(|character| (character.id, character.character_game_id))
             .collect::<HashMap<_, _>>();
@@ -215,7 +215,7 @@ async fn get_weapon_preference(
         let result = generate(
             &cached_mission_list,
             &invalid_mission_id_list,
-            &charcter_id_to_game_id,
+            &character_id_to_game_id,
             &weapon_id_to_game_id,
         );
 

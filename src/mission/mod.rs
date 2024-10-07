@@ -156,7 +156,7 @@ pub struct MissionWeaponDamageInfo {
     pub damage: f64,
     #[serde(rename = "friendlyFire")]
     pub friendly_fire: f64,
-    #[serde(rename = "charcterGameId")]
+    #[serde(rename = "characterGameId")]
     pub character_game_id: String,
     #[serde(rename = "mappedName")]
     pub mapped_name: String,
