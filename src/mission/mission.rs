@@ -454,8 +454,12 @@ pub fn generate_mission_kpi(
         let mut player_mission_kpi_weighted_sum = 0.0;
         let mut player_mission_kpi_max_sum = 0.0;
 
+        let mut component_name_to_component = HashMap::new();
+
         for (kpi_component, kpi_data) in raw_kpi_data {
             let component_name = kpi_component.to_string_zh();
+
+            component_name_to_component.insert(component_name.clone(), kpi_component);
 
             let corrected_index = match mission_correction_factor.get(&kpi_component) {
                 Some(factor) => (kpi_data.raw_index * factor).min(1.0),
@@ -504,6 +508,13 @@ pub fn generate_mission_kpi(
             player_mission_kpi_weighted_sum += transformed_index * current_weight;
             player_mission_kpi_max_sum += kpi_component.max_value() * current_weight;
         }
+
+        player_kpi_component_list.sort_unstable_by(|a, b| {
+            let a_index: i16 = (**component_name_to_component.get(&a.name).unwrap()).into();
+            let b_index: i16 = (**component_name_to_component.get(&b.name).unwrap()).into();
+
+            a_index.cmp(&b_index)
+        });
 
         result.push(MissionKPIInfo {
             player_name,

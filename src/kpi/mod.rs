@@ -112,6 +112,22 @@ impl Display for KPIComponent {
     }
 }
 
+impl From<KPIComponent> for i16 {
+    fn from(value: KPIComponent) -> Self {
+        match value {
+            KPIComponent::Kill => 0,
+            KPIComponent::Damage => 1,
+            KPIComponent::Priority => 2,
+            KPIComponent::Revive => 3,
+            KPIComponent::Death => 4,
+            KPIComponent::FriendlyFire => 5,
+            KPIComponent::Nitra => 6,
+            KPIComponent::Supply => 7,
+            KPIComponent::Minerals => 8,
+        }
+    }
+}
+
 impl KPIComponent {
     pub fn to_string_zh(&self) -> String {
         match self {
