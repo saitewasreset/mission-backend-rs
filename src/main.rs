@@ -7,6 +7,7 @@ use mission_backend_rs::admin;
 use mission_backend_rs::cache;
 use mission_backend_rs::damage;
 use mission_backend_rs::general;
+use mission_backend_rs::get_mapping;
 use mission_backend_rs::info;
 use mission_backend_rs::kpi;
 use mission_backend_rs::kpi::KPIConfig;
@@ -118,6 +119,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::PayloadConfig::default().limit(MAX_BODY_LENGTH))
             .service(
                 web::scope("/api")
+                    .service(get_mapping)
                     .service(web::scope("/mission").configure(mission::scoped_config))
                     .service(web::scope("/admin").configure(admin::scoped_config))
                     .service(web::scope("/cache").configure(cache::scoped_config))

@@ -7,6 +7,10 @@ pub mod general;
 pub mod info;
 pub mod kpi;
 pub mod mission;
+use actix_web::{
+    get,
+    web::{Data, Json},
+};
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use kpi::{KPIComponent, KPIConfig};
@@ -230,6 +234,24 @@ pub struct ClientConfig {
     pub kpi_config_path: Option<String>,
 }
 
+#[derive(Serialize)]
+pub struct APIMapping {
+    pub character: HashMap<String, String>,
+    pub entity: HashMap<String, String>,
+    #[serde(rename = "entityBlacklist")]
+    pub entity_blacklist: Vec<String>,
+    #[serde(rename = "entityCombine")]
+    pub entity_combine: HashMap<String, String>,
+    #[serde(rename = "missionType")]
+    pub mission_type: HashMap<String, String>,
+    pub resource: HashMap<String, String>,
+    pub weapon: HashMap<String, String>,
+    #[serde(rename = "weaponCombine")]
+    pub weapon_combine: HashMap<String, String>,
+    #[serde(rename = "weaponHero")]
+    pub weapon_character: HashMap<String, String>,
+}
+
 pub fn hazard_id_to_real(hazard_id: i16) -> f64 {
     match hazard_id {
         1..6 => hazard_id as f64,
@@ -241,4 +263,24 @@ pub fn hazard_id_to_real(hazard_id: i16) -> f64 {
         105 => 5.5,
         _ => unreachable!("invalid hazard id"),
     }
+}
+
+pub fn generate_mapping(mapping: Mapping) -> APIMapping {
+    APIMapping {
+        character: mapping.character_mapping,
+        entity: mapping.entity_mapping,
+        entity_blacklist: mapping.entity_blacklist_set.into_iter().collect(),
+        entity_combine: mapping.entity_combine,
+        mission_type: mapping.mission_type_mapping,
+        resource: mapping.resource_mapping,
+        weapon: mapping.weapon_mapping,
+        weapon_combine: mapping.weapon_combine,
+        weapon_character: mapping.weapon_character,
+    }
+}
+
+#[get("/mapping")]
+pub async fn get_mapping(app_state: Data<AppState>) -> Json<APIResponse<APIMapping>> {
+    let mapping = app_state.mapping.lock().unwrap();
+    Json(APIResponse::ok(generate_mapping(mapping.clone())))
 }
