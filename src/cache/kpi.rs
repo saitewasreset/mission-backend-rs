@@ -50,6 +50,7 @@ impl CachedGlobalKPIState {
         scout_special_player_set: &HashSet<String>,
     ) -> (Self, Duration) {
         let begin = Instant::now();
+
         let cached_mission_kpi_set = cached_mission_kpi_list
             .into_iter()
             .map(|item| (item.mission_id, item))
@@ -62,6 +63,17 @@ impl CachedGlobalKPIState {
             .iter()
             .filter(|x| !invalid_mission_id_set.contains(&x.mission_info.id))
             .collect::<Vec<_>>();
+
+        if cached_mission_list.len() == 0 {
+            return (
+                CachedGlobalKPIState {
+                    character_correction_factor: HashMap::new(),
+                    standard_correction_sum: HashMap::new(),
+                    transform_range: HashMap::new(),
+                },
+                begin.elapsed(),
+            );
+        }
 
         let mut character_to_mission_info_list: HashMap<
             CharacterKPIType,
