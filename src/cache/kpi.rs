@@ -214,31 +214,31 @@ impl CachedGlobalKPIState {
             .values()
             .map(|x| x.get(&KPIComponent::Damage).unwrap().value)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
+            .unwrap_or_default();
 
         let min_priority = character_correction_factor
             .values()
             .map(|x| x.get(&KPIComponent::Priority).unwrap().value)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
+            .unwrap_or_default();
 
         let min_kill = character_correction_factor
             .values()
             .map(|x| x.get(&KPIComponent::Kill).unwrap().value)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
+            .unwrap_or_default();
 
         let min_nitra = character_correction_factor
             .values()
             .map(|x| x.get(&KPIComponent::Nitra).unwrap().value)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
+            .unwrap_or_default();
 
         let min_minerals = character_correction_factor
             .values()
             .map(|x| x.get(&KPIComponent::Minerals).unwrap().value)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
+            .unwrap_or_default();
 
         for (_, correction_info) in &mut character_correction_factor {
             let damage = correction_info.get_mut(&KPIComponent::Damage).unwrap();

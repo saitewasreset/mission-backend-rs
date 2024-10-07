@@ -148,7 +148,7 @@ impl NewPlayerInfo {
                 let player_id = insert_into(player::table)
                     .values((
                         player::player_name.eq(&player_info_log.player_name),
-                        player::friend.eq(true),
+                        player::friend.eq(false),
                     ))
                     .get_result::<(i16, String, bool)>(db)
                     .map_err(|e| {
