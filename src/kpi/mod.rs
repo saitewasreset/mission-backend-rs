@@ -193,11 +193,16 @@ pub struct IndexTransformRangeConfig {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct IndexTransformRange {
+    #[serde(rename = "rankRange")]
     pub rank_range: (f64, f64),
+    #[serde(rename = "sourceRange")]
     pub source_range: (f64, f64),
+    #[serde(rename = "transformRange")]
     pub transform_range: (f64, f64),
     // y = ax + b
+    #[serde(rename = "transformCofficient")]
     pub transform_cofficient: (f64, f64),
+    #[serde(rename = "playerCount")]
     pub player_count: i32,
 }
 
