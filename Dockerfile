@@ -1,9 +1,10 @@
-FROM rust as builder
+FROM rust:alpine as builder
 WORKDIR /usr/src/mission-backend-rs
 COPY ./migrations ./migrations
 COPY ./src ./src
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
+RUN apk add --no-cache musl-dev pkgconf openssl-dev libpq-dev openssl-libs-static
 RUN cargo build --release --bin mission-backend-rs
 
 FROM alpine:latest
