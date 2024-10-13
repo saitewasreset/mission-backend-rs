@@ -12,6 +12,10 @@ ENV OPENSSL_STATIC=true \
     PKG_CONFIG_ALLOW_CROSS=1 \
     PQ_LIB_STATIC=true
 RUN cargo build --release --bin mission-backend-rs
+# https://www.aloxaf.com/2018/09/reduce_rust_size/
+RUN apk add --no-cache binutils upx
+RUN strip target/release/mission-backend-rs
+RUN upx --best target/release/mission-backend-rs
 
 # production stage
 FROM alpine:latest
