@@ -4,7 +4,7 @@ version = "0.12.7"
 edition = "2021"
 
 [dependencies]
-pq-sys = { version = "0.6.3", features = ["bundled"] }
+pq-sys = { version = "0.6.3", features = ["bundled_without_openssl"] }
 actix-web = { version = "4.9.0", features = ["cookies"] }
 csv = "1.3.0"
 derive_more = { version = "1.0.0", features = ["debug", "display", "error"] }
