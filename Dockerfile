@@ -19,5 +19,6 @@ RUN upx --best target/release/mission-backend-rs
 
 # production stage
 FROM alpine:latest
+RUN apk add --no-cache curl
 COPY --from=builder /usr/src/mission-backend-rs/target/release/mission-backend-rs /usr/local/bin/mission-backend-rs
 CMD ["mission-backend-rs"]
