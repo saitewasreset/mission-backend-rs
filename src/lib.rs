@@ -286,3 +286,8 @@ pub async fn get_mapping(app_state: Data<AppState>) -> Json<APIResponse<APIMappi
     let mapping = app_state.mapping.lock().unwrap();
     Json(APIResponse::ok(generate_mapping(mapping.clone())))
 }
+
+#[get("/heartbeat")]
+pub async fn echo_heartbeat() -> Json<APIResponse<()>> {
+    Json(APIResponse::ok(()))
+}

@@ -3,7 +3,6 @@ use actix_web::{web, App, HttpServer};
 use diesel::{Connection, PgConnection};
 use env_logger::Env;
 use log::{error, info, warn};
-use mission_backend_rs::admin;
 use mission_backend_rs::cache;
 use mission_backend_rs::damage;
 use mission_backend_rs::general;
@@ -15,6 +14,7 @@ use mission_backend_rs::mission;
 use mission_backend_rs::AppState;
 use mission_backend_rs::DbPool;
 use mission_backend_rs::Mapping;
+use mission_backend_rs::{admin, echo_heartbeat};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -119,6 +119,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::PayloadConfig::default().limit(MAX_BODY_LENGTH))
             .service(
                 web::scope("/api")
+                    .service(echo_heartbeat)
                     .service(get_mapping)
                     .service(web::scope("/mission").configure(mission::scoped_config))
                     .service(web::scope("/admin").configure(admin::scoped_config))
