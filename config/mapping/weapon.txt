@@ -28,7 +28,6 @@ WPN_FlareGun|照明枪
 PRJ_GrenadeAxe|冲击战斧
 BP_SentryGun_Redeployable|哨戒炮
 PRJ_Grenade_StickySmall|粘性手雷
-WPN_Pickaxe|十字镐
 BP_FriendlyShredder|蜂群手雷
 Grenade_BouncyPlasma|电浆连爆雷
 Grenade_StickyMine|感应地雷
@@ -36,4 +35,10 @@ Grenade_Cluster_Fragment|集束手雷
 BP_Grenade_NeedleSprayer|战术铅暴雷
 Grenade_Incendiary|燃烧手雷
 Grenade_Freeze|急冻手雷
+Grenade_Neurotoxin|神经毒素手雷
 BP_LureTarget|L.U.R.E. 诱饵雷
+Grenade_HighExplosive|高爆手雷
+Grenade_Axe|冲击战斧
+
+WPN_PlagueSoaper|净岩泡沫枪
+WPN_Pickaxe|十字镐

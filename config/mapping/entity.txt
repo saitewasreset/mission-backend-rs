@@ -62,10 +62,10 @@ ED_Spider_GruntTutorial|战士异虫
 ED_Spider_Hoarder|嗜矿异虫
 ED_Spider_Lobber|脓毒异虫
 ED_Spider_RapidShooter|速射酸虫
+ED_Spider_RapidShooter_Elite|精英速射酸虫
 ED_Spider_ShieldTank|暴君异虫
 ED_Spider_Shooter|吐酸异虫
-ED_Spider_Shooter_Normal|吐酸异虫
-ED_Spider_Shooter_Ground|吐酸异虫
+ED_Spider_Shooter_Normal_Elite|精英吐酸异虫
 ED_Spider_Shooter_Rockpox_Plague|岩痘吐酸异虫
 ED_Spider_ShooterQueen|酸液虫后
 ED_Spider_Spawn|异虫幼虫
@@ -93,8 +93,7 @@ ED_WalkingPlagueheart|噬岩腐化者
 ED_Woodlouse|丘罗那地虱
 ED_Woodlouse_Youngling|地虱幼体
 ED_FacilityCaretaker|看守者
-ED_FacilityTentacle_Burrowing|机械副肢
-ED_FacilityTentacle_End|机械副肢
+ED_FacilityTentacle|机械附肢
 ED_JellyBreeder_Normal|纳多赛特饲育水母
 ED_Spider_Grunt_Radioactive|战士异虫
 ED_Spider_Tank_Radioactive|禁卫异虫
@@ -108,3 +107,11 @@ ED_HydraWeed_Core|科洛克王草
 ED_ShootingPlant_Small|科洛克新芽
 ED_SmallShootingPlant_RegenPod|科洛克治疗荚实
 ED_TentacleNode|瓦托克鳞甲荆节
+ED_StabberVines|穿刺藤蔓
+ED_Mactera_Amber|氪化吐刺异虫蝇
+ED_Parasite|寄生虫
+BP_Nisse|圣诞小精灵
+ED_Butterfly|六翼拟蜉
+ED_GliderBeast|飞翼蝠鲼
+ED_Spider_Exploding_Rockpox_Plague|岩痘自爆异虫
+ED_BoughWasp|枯树蜂窝

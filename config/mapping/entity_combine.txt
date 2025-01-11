@@ -2,7 +2,6 @@
 ED_Bomber_Child|ED_Bomber
 ED_Bomber_Explosive|ED_Bomber
 ED_Bomber_Ice|ED_Bomber
-ED_Bomber_Rockpox_Plague|ED_Bomber
 
 # ED_Spider_Swarmer -> 蜂拥异虫
 ED_EggSpider|ED_Spider_Swarmer
@@ -34,7 +33,6 @@ ED_Spider_Exploder_Warning|ED_Spider_Exploder
 ED_Spider_Exploding|ED_Spider_Exploder
 ED_Spider_Exploding_Radioactive|ED_Spider_Exploder
 ED_Spider_Exploding_Warning|ED_Spider_Exploder
-ED_Spider_Exploder_Rockpox_Plague|ED_Spider_Exploder
 
 # ED_Spider_Grunt -> 战士异虫
 ED_Spider_Grunt_Normal|ED_Spider_Grunt
@@ -57,7 +55,6 @@ ED_Spider_Grunt_Rock_Warning|ED_Spider_Grunt_Rock
 # ED_Spider_Shooter -> 吐酸异虫
 ED_Spider_Shooter_Normal|ED_Spider_Shooter
 ED_Spider_Shooter_Ground|ED_Spider_Shooter
-ED_Spider_Shooter_Rockpox_Plague|ED_Spider_Shooter
 
 # ED_Spider_Tank_HeavySpawn -> 哨卫异虫
 ED_Spider_Boss_HeavySpawn|ED_Spider_Tank_HeavySpawn
@@ -74,3 +71,14 @@ ED_StabberVines2|ED_StabberVines
 
 # ED_HydraWeed -> 科洛克王草
 ED_HydraWeed|ED_HydraWeed_Core
+
+# ED_BoughWasp -> 枯树蜂窝
+ED_BoughWasp_Nest_Small|ED_BoughWasp
+ED_BoughWasp_Nest_Medium|ED_BoughWasp
+ED_BoughWasp_Nest_Medium2|ED_BoughWasp
+ED_BoughWasp_Nest_Medium3|ED_BoughWasp
+
+# ED_FacilityTentacle -> 机械附肢
+ED_FacilityTentacle_Burrowing|ED_FacilityTentacle
+ED_FacilityTentacle_End|ED_FacilityTentacle
+ED_TerminatorTentacle|ED_FacilityTentacle
