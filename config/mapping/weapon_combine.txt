@@ -18,3 +18,5 @@ BP_StickyFrost|WPN_Cryospray
 BP_BRT_Bomb|WPN_BurstPistol
 
 BP_Crossbow_Electrobeam|WPN_Crossbow
+
+BP_Grenade_Neurotoxin_Cloud|Grenade_Neurotoxin
