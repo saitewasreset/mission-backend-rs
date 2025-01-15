@@ -35,7 +35,7 @@ Grenade_Cluster_Fragment|集束手雷
 BP_Grenade_NeedleSprayer|战术铅暴雷
 Grenade_Incendiary|燃烧手雷
 Grenade_Freeze|急冻手雷
-Grenade_Neurotoxin|神经毒素手雷
+BP_Grenade_Neurotoxin_Cloud|神经毒素手雷
 BP_LureTarget|L.U.R.E. 诱饵雷
 Grenade_HighExplosive|高爆手雷
 Grenade_Axe|冲击战斧
