@@ -1,4 +1,3 @@
-use crate::cache::APICache;
 use crate::APIResponse;
 use actix_web::web::Buf;
 use reqwest::blocking::Client;
@@ -36,7 +35,7 @@ fn update_specific_cache(
     cache_type: CacheType,
     endpoint_url: &str,
     http_client: &Client,
-) -> Result<APICache, String> {
+) -> Result<(), String> {
     let update_url = format!("{}{}", endpoint_url, cache_type.url_path());
 
     match http_client.get(&update_url).send() {
@@ -44,10 +43,10 @@ fn update_specific_cache(
             StatusCode::OK => {
                 let body = response.bytes().expect("failed fetching response body");
                 let api_response =
-                    match serde_json::from_reader::<_, APIResponse<APICache>>(body.reader()) {
+                    match serde_json::from_reader::<_, APIResponse<()>>(body.reader()) {
                         Ok(x) => {
                             if x.code == 200 {
-                                x.data.unwrap()
+                                ()
                             } else {
                                 return Err(format!(
                                     "failed updating cache {}: {} {}",

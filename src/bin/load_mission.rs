@@ -199,9 +199,8 @@ fn compress(data: &[u8]) -> Vec<u8> {
 
 fn get_log_file_list(base_path: &Path) -> Vec<PathBuf> {
     let re = Regex::new("MissionMonitor_([0-9]+).txt").unwrap();
-    std::fs::read_dir(base_path)
+    fs::read_dir(base_path)
         .unwrap()
-        .into_iter()
         .filter(|r| {
             re.is_match(
                 r.as_ref()
@@ -317,7 +316,7 @@ fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, String> {
 }
 
 fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::error::Error>> {
-    let raw_file_content = std::fs::read(file_path)?;
+    let raw_file_content = fs::read(file_path)?;
 
     let mut file_content = String::with_capacity(MAX_LOG_LENGTH);
 

@@ -236,9 +236,9 @@ pub fn apply_weight_table(
 
 pub fn friendly_fire_index(ff_rate: f64) -> f64 {
     if ff_rate >= 0.91 {
-        return -1000.0;
+        -1000.0
     } else {
-        return 99.0 / (ff_rate - 1.0) + 100.0;
+        99.0 / (ff_rate - 1.0) + 100.0
     }
 }
 

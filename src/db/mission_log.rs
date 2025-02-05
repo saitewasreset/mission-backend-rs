@@ -191,19 +191,19 @@ impl TryFrom<&str> for LogMissionInfo {
 }
 
 fn get_hazard_id(hazard_bonus: f64) -> i16 {
-    const EPISILON: f64 = 1e-3;
-    if (hazard_bonus - 0.25).abs() < EPISILON {
-        return 1;
-    } else if (hazard_bonus - 0.5).abs() < EPISILON {
-        return 2;
-    } else if (hazard_bonus - 0.75).abs() < EPISILON {
-        return 3;
-    } else if (hazard_bonus - 1.0).abs() < EPISILON {
-        return 4;
-    } else if (hazard_bonus - 1.33).abs() < EPISILON {
-        return 5;
+    const EPSILON: f64 = 1e-3;
+    if (hazard_bonus - 0.25).abs() < EPSILON {
+        1
+    } else if (hazard_bonus - 0.5).abs() < EPSILON {
+        2
+    } else if (hazard_bonus - 0.75).abs() < EPSILON {
+        3
+    } else if (hazard_bonus - 1.0).abs() < EPSILON {
+        4
+    } else if (hazard_bonus - 1.33).abs() < EPSILON {
+        5
     } else {
-        return 6;
+        6
     }
 }
 
@@ -443,20 +443,20 @@ impl TryFrom<&str> for LogDamageInfo {
 
 impl LogDamageInfo {
     pub fn combine_eq(&self, other: &LogDamageInfo) -> bool {
-        return (self.causer_type == other.causer_type)
+        (self.causer_type == other.causer_type)
             && (self.taker_type == other.taker_type)
             && (self.causer == other.causer)
             && (self.taker == other.taker)
             && (self.weapon == other.weapon)
-            && ((self.mission_time - other.mission_time).abs() < 5);
+            && ((self.mission_time - other.mission_time).abs() < 5)
     }
 }
 
 fn remove_appendix(source: &str) -> &str {
     if source.len() > 3 && &source[source.len() - 2..] == "_C" {
-        return &source[..source.len() - 2];
+        &source[..source.len() - 2]
     } else {
-        return &source;
+        source
     }
 }
 
@@ -464,9 +464,9 @@ fn remove_appendix(source: &str) -> &str {
 fn transform_record_entity_name(source: &str) -> (bool, String) {
     // ENE_(.+)_C
     if source.len() > 6 && &source[..4] == "ENE_" {
-        return (true, format!("ED_{}", &source[4..source.len() - 2]));
+        (true, format!("ED_{}", &source[4..source.len() - 2]))
     } else {
-        return (false, String::from(remove_appendix(source)));
+        (false, String::from(remove_appendix(source)))
     }
 }
 

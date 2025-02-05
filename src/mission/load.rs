@@ -63,23 +63,23 @@ pub async fn load_mission(
                         decode_time: format!("{:?}", decode_time),
                     };
 
-                    return Json(APIResponse::ok(response_data));
+                    Json(APIResponse::ok(response_data))
                 }
                 Err(()) => {
-                    return Json(APIResponse::internal_error());
+                    Json(APIResponse::internal_error())
                 }
             }
         }
         Err(e) => {
             warn!("failed to decode the payload: {}", e);
-            return Json(APIResponse::bad_request("failed to decode the payload"));
+            Json(APIResponse::bad_request("failed to decode the payload"))
         }
     }
 }
 
 fn decompress_zstd_payload(data: Bytes) -> Result<(Duration, Vec<u8>), std::io::Error> {
     let begin = Instant::now();
-    let mut decoder = zstd::Decoder::new(data.reader()).unwrap();
+    let mut decoder = zstd::Decoder::new(data.reader())?;
     let mut decompressed = Vec::new();
 
     let decode_result = decoder.read_to_end(&mut decompressed);
