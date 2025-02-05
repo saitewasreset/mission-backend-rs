@@ -46,13 +46,7 @@ async fn get_damage_weapon(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get weapon damage info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get weapon damage info"))
 }
 
 fn generate(

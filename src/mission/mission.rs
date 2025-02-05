@@ -11,7 +11,6 @@ use crate::db::schema::*;
 use crate::{APIResponse, DbPool};
 use actix_web::{get, web::{self, Data, Json}, HttpRequest};
 use diesel::prelude::*;
-use log::error;
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
 fn generate_mission_general_info(
@@ -560,16 +559,7 @@ async fn get_general_info(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get mission general info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get mission general info"))
 }
 
 #[get("/{mission_id}/basic")]
@@ -617,16 +607,7 @@ async fn get_player_character(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get player character info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get player character info"))
 }
 
 #[get("/{mission_id}/general")]
@@ -684,16 +665,7 @@ async fn get_mission_general(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get mission general info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get mission general info"))
 }
 
 #[get("/{mission_id}/damage")]
@@ -735,16 +707,7 @@ async fn get_mission_damage(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get mission damage info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get mission damage info"))
 }
 
 #[get("/{mission_id}/weapon")]
@@ -780,16 +743,7 @@ async fn get_mission_weapon_damage(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get mission weapon damage info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get mission weapon damage info"))
 }
 
 #[get("/{mission_id}/resource")]
@@ -833,16 +787,7 @@ async fn get_mission_resource_info(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => match x {
-            Some(info) => Json(APIResponse::ok(info)),
-            None => Json(APIResponse::not_found()),
-        },
-        Err(e) => {
-            error!("cannot get mission resource info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result_option(result, "cannot get mission resource info"))
 }
 
 #[get("/{mission_id}/kpi_full")]
@@ -863,16 +808,7 @@ async fn get_mission_kpi_full(
     if let Some(kpi_config) = cache_manager.get_kpi_config() {
         let result = get_mission_kpi_base(db_pool, redis_client, kpi_config, mission_id).await;
 
-        match result {
-            Ok(x) => match x {
-                Some(info) => Json(APIResponse::ok(info)),
-                None => Json(APIResponse::not_found()),
-            },
-            Err(e) => {
-                error!("cannot get mission kpi info: {}", e);
-                Json(APIResponse::internal_error())
-            }
-        }
+        Json(APIResponse::from_result_option(result, "cannot get mission kpi info"))
     } else {
         Json(APIResponse::config_required("kpi"))
     }
@@ -888,18 +824,17 @@ async fn get_mission_kpi(
     let mission_id = path.into_inner();
 
     if let Some(kpi_config) = cache_manager.get_kpi_config() {
-        let result = get_mission_kpi_base(db_pool, redis_client, kpi_config, mission_id).await;
+        let result = get_mission_kpi_base(db_pool, redis_client, kpi_config, mission_id)
+            .await
+            .map(|r|
+                r.map(|x|
+                    x
+                        .into_iter()
+                        .map(|item| item.into())
+                        .collect::<Vec<_>>()));
 
-        match result {
-            Ok(x) => match x {
-                Some(info) => Json(APIResponse::ok(info.into_iter().map(|x| x.into()).collect())),
-                None => Json(APIResponse::not_found()),
-            },
-            Err(e) => {
-                error!("cannot get mission kpi info: {}", e);
-                Json(APIResponse::internal_error())
-            }
-        }
+
+        Json(APIResponse::from_result_option(result, "cannot get mission kpi info"))
     } else {
         Json(APIResponse::config_required("kpi"))
     }

@@ -45,13 +45,7 @@ async fn get_general(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get general info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get general info"))
 }
 
 fn generate(

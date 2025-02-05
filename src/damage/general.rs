@@ -69,17 +69,14 @@ async fn get_overall_damage_info(
         .await
         .unwrap();
 
-    match result {
-        Ok((prev, overall)) => Json(APIResponse::ok(OverallDamageInfo {
+
+    Json(APIResponse::from_result(result.map(|(prev, overall)| {
+        OverallDamageInfo {
             info: overall,
             prev_info: prev,
             entity_mapping,
-        })),
-        Err(e) => {
-            error!("cannot get overall damage info: {}", e);
-            Json(APIResponse::internal_error())
         }
-    }
+    }), "cannot get overall damage info"))
 }
 
 fn generate_for_mission_list(

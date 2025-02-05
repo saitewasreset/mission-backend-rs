@@ -139,7 +139,7 @@ async fn get_brothers_info(
     redis_client: Data<redis::Client>,
 ) -> Json<APIResponse<APIBrothers>> {
     if let Ok((mut db_conn, mut redis_conn)) = get_db_redis_conn(&db_pool, &redis_client) {
-        match web::block(move || {
+        let result = web::block(move || {
             let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
                 .map_err(|e| e.to_string())?;
 
@@ -163,15 +163,9 @@ async fn get_brothers_info(
                 &player_id_to_name,
                 &watchlist_player_id_list,
             ))
-        }).await.unwrap() {
-            Ok(brothers_info) => {
-                Json(APIResponse::ok(brothers_info))
-            }
-            Err(e) => {
-                error!("cannot get brothers info: {}", e);
-                Json(APIResponse::internal_error())
-            }
-        }
+        }).await.unwrap();
+
+        Json(APIResponse::from_result(result, "cannot get brothers info"))
     } else {
         error!("cannot get db connection");
         Json(APIResponse::internal_error())

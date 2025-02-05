@@ -4,7 +4,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use chrono::{DateTime, Timelike};
-use log::error;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -45,13 +44,7 @@ async fn get_game_time(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get game time info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get game time info"))
 }
 
 fn generate(cached_mission_list: &[MissionCachedInfo]) -> GameTimeInfo {

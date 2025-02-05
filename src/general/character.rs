@@ -8,7 +8,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
@@ -56,13 +55,7 @@ async fn get_character_general_info(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get character general info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get character general info"))
 }
 
 #[get("/character_info")]
@@ -108,13 +101,7 @@ async fn get_character_choice_info(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get character choice info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get character choice info"))
 }
 
 fn generate(

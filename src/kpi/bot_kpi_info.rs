@@ -48,8 +48,7 @@ fn generate_bot_kpi_info(
         let mut player_mission_info_list = player_info
             .by_character
             .values()
-            .map(|player_character_info| player_character_info.mission_list.clone())
-            .flatten()
+            .flat_map(|player_character_info| player_character_info.mission_list.clone())
             .collect::<Vec<_>>();
 
         player_mission_info_list.sort_unstable_by(|a, b| a.begin_timestamp.cmp(&b.begin_timestamp));
@@ -165,13 +164,7 @@ async fn get_bot_kpi_info(
                     .await
                     .unwrap();
 
-                match result {
-                    Ok(x) => Json(APIResponse::ok(x)),
-                    Err(e) => {
-                        error!("cannot get bot kpi info: {}", e);
-                        Json(APIResponse::internal_error())
-                    }
-                }
+                Json(APIResponse::from_result(result, "cannot get bot kpi info"))
             } else {
                 Json(APIResponse::config_required("kpi"))
             }

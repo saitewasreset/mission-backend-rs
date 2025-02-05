@@ -14,7 +14,9 @@ use kpi::{KPIComponent, KPIConfig};
 use serde::{Deserialize, Serialize};
 use std::cell::LazyCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::path::PathBuf;
+use log::error;
 use crate::cache::manager::CacheManager;
 
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
@@ -180,6 +182,27 @@ impl<'a, T: Serialize> APIResponse<T> {
             code: 200,
             message: "Rock and stone!".to_string(),
             data: Some(data),
+        }
+    }
+
+    pub fn from_result<E: Display>(data: Result<T, E>, error_log_info: impl Display) -> Self {
+        match data {
+            Ok(x) => APIResponse::ok(x),
+            Err(e) => {
+                error!("{}: {}", error_log_info, e);
+                APIResponse::internal_error()
+            }
+        }
+    }
+
+    pub fn from_result_option<E: Display>(data: Result<Option<T>, E>, error_log_info: impl Display) -> Self {
+        match data {
+            Ok(Some(x)) => APIResponse::ok(x),
+            Ok(None) => APIResponse::not_found(),
+            Err(e) => {
+                error!("{}: {}", error_log_info, e);
+                APIResponse::internal_error()
+            }
         }
     }
 

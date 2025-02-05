@@ -9,7 +9,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
@@ -57,13 +56,7 @@ async fn get_mission_type(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get mission type info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get mission type info"))
 }
 
 fn generate(

@@ -8,7 +8,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
@@ -74,13 +73,7 @@ async fn get_player(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get player info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get player info"))
 }
 
 fn generate(

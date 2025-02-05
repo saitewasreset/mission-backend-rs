@@ -240,13 +240,7 @@ async fn get_player_kpi(
             .await
             .unwrap();
 
-        match result {
-            Ok(x) => Json(APIResponse::ok(x)),
-            Err(e) => {
-                error!("cannot get player kpi: {}", e);
-                Json(APIResponse::internal_error())
-            }
-        }
+        Json(APIResponse::from_result(result, "cannot get player kpi"))
     } else {
         Json(APIResponse::config_required("kpi"))
     }

@@ -28,35 +28,29 @@ async fn get_gamma_info(
     match get_db_redis_conn(&db_pool, &redis_client) {
         Ok((_, mut redis_conn)) => {
             let result = web::block(move || {
-                CachedGlobalKPIState::try_get_cached(&mut redis_conn)
+                let x = CachedGlobalKPIState::try_get_cached(&mut redis_conn).map_err(|e| e.to_string())?;
+
+                let mut result: HashMap<String, HashMap<String, GammaInnerInfo>> = HashMap::new();
+                for (character_kpi_type, character_component) in x.character_correction_factor {
+                    for (kpi_component, character_data) in character_component {
+                        result
+                            .entry(kpi_component.to_string())
+                            .or_default()
+                            .entry(character_kpi_type.to_string())
+                            .or_insert(GammaInnerInfo {
+                                player_index: character_data.player_index,
+                                value: character_data.value,
+                                ratio: character_data.correction_factor,
+                            });
+                    }
+                }
+
+                Ok::<_, String>(result)
             })
                 .await
                 .unwrap();
 
-            match result {
-                Ok(x) => {
-                    let mut result: HashMap<String, HashMap<String, GammaInnerInfo>> = HashMap::new();
-                    for (character_kpi_type, character_component) in x.character_correction_factor {
-                        for (kpi_component, character_data) in character_component {
-                            result
-                                .entry(kpi_component.to_string())
-                                .or_default()
-                                .entry(character_kpi_type.to_string())
-                                .or_insert(GammaInnerInfo {
-                                    player_index: character_data.player_index,
-                                    value: character_data.value,
-                                    ratio: character_data.correction_factor,
-                                });
-                        }
-                    }
-
-                    Json(APIResponse::ok(result))
-                }
-                Err(e) => {
-                    error!("cannot get global kpi state: {}", e);
-                    Json(APIResponse::internal_error())
-                }
-            }
+            Json(APIResponse::from_result(result, "cannot get global kpi state"))
         }
         Err(e) => {
             error!("cannot get db connection: {}", e);
@@ -72,28 +66,26 @@ async fn get_transform_range_info(
 ) -> Json<APIResponse<HashMap<String, HashMap<String, Vec<IndexTransformRange>>>>> {
     match get_db_redis_conn(&db_pool, &redis_client) {
         Ok((_, mut redis_conn)) => {
-            match web::block(move || {
-                CachedGlobalKPIState::try_get_cached(&mut redis_conn)
-            }).await.unwrap() {
-                Ok(x) => Json(APIResponse::ok(
-                    x.transform_range
-                        .iter()
-                        .map(|(character_kpi_type, character_info)| {
-                            (
-                                character_kpi_type.to_string(),
-                                character_info
-                                    .iter()
-                                    .map(|(character_id, info)| (character_id.to_string(), info.clone()))
-                                    .collect(),
-                            )
-                        })
-                        .collect::<HashMap<_, _>>(),
-                )),
-                Err(e) => {
-                    error!("cannot get global kpi state: {}", e);
-                    Json(APIResponse::internal_error())
-                }
-            }
+            let result = web::block(move || {
+                let x = CachedGlobalKPIState::try_get_cached(&mut redis_conn).map_err(|e| e.to_string())?;
+
+                let r = x.transform_range
+                    .iter()
+                    .map(|(character_kpi_type, character_info)| {
+                        (
+                            character_kpi_type.to_string(),
+                            character_info
+                                .iter()
+                                .map(|(character_id, info)| (character_id.to_string(), info.clone()))
+                                .collect(),
+                        )
+                    })
+                    .collect::<HashMap<_, _>>();
+
+                Ok::<_, String>(r)
+            }).await.unwrap();
+
+            Json(APIResponse::from_result(result, "cannot get global kpi state"))
         }
 
         Err(e) => {

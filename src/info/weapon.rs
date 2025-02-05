@@ -11,7 +11,6 @@ use crate::db::models::*;
 use crate::db::schema::*;
 use crate::{WEAPON_ORDER, WEAPON_TYPE};
 use diesel::prelude::*;
-use log::error;
 use crate::cache::manager::get_db_redis_conn;
 
 // character_game_id -> weapon_type(0, 1) -> Vec<(weapon_game_id, preference_index)>
@@ -177,11 +176,5 @@ async fn get_weapon_preference(
         .await
         .unwrap();
 
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(e) => {
-            error!("cannot get weapon preference info: {}", e);
-            Json(APIResponse::internal_error())
-        }
-    }
+    Json(APIResponse::from_result(result, "cannot get weapon preference info"))
 }
