@@ -4,10 +4,9 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use chrono::{DateTime, Timelike};
-use log::{debug, error};
+use log::error;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::Instant;
 
 const MISSION_TIME_RESOLUTION_SEC: u16 = 15;
 const GAME_TIME_RESOLUTION_SEC: u32 = 60;
@@ -23,69 +22,35 @@ pub struct GameTimeInfo {
     #[serde(rename = "gameTimeDistribution")]
     pub game_time_distribution: HashMap<i32, i32>,
 }
-use crate::{APIResponse, AppState, DbPool};
+use crate::{APIResponse, DbPool};
+use crate::cache::manager::get_db_redis_conn;
 
 #[get("/game_time")]
 async fn get_game_time(
-    app_state: Data<AppState>,
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
 ) -> Json<APIResponse<GameTimeInfo>> {
-    let mapping = app_state.mapping.lock().unwrap();
-
-    let entity_blacklist_set = mapping.entity_blacklist_set.clone();
-    let entity_combine = mapping.entity_combine.clone();
-    let weapon_combine = mapping.weapon_combine.clone();
-
-    drop(mapping);
     let result = web::block(move || {
-        let begin = Instant::now();
+        let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)
+            .map_err(|e| format!("cannot get connection: {}", e))?;
 
-        let mut db_conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
-            }
-        };
+        let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
+            .map_err(|e| format!("cannot get cached mission info: {}", e))?;
 
-        let mut redis_conn = match redis_client.get_connection() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get redis connection: {}", e);
-                return Err(());
-            }
-        };
-
-        let cached_mission_list = match MissionCachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-        ) {
-            Ok(x) => x,
-            Err(()) => {
-                error!("cannot get cached mission list");
-                return Err(());
-            }
-        };
-
-        debug!("data prepared in {:?}", begin.elapsed());
-        let begin = Instant::now();
 
         let result = generate(&cached_mission_list);
 
-        debug!("game time info generated in {:?}", begin.elapsed());
-
-        Ok(result)
+        Ok::<_, String>(result)
     })
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     match result {
         Ok(x) => Json(APIResponse::ok(x)),
-        Err(()) => Json(APIResponse::internal_error()),
+        Err(e) => {
+            error!("cannot get game time info: {}", e);
+            Json(APIResponse::internal_error())
+        }
     }
 }
 
