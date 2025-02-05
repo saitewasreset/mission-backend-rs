@@ -1,4 +1,5 @@
 pub mod character;
+pub mod game_time;
 pub mod general;
 pub mod mission_type;
 pub mod player;
@@ -139,4 +140,5 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(player::get_player);
     cfg.service(character::get_character_general_info);
     cfg.service(character::get_character_choice_info);
+    cfg.service(game_time::get_game_time);
 }
