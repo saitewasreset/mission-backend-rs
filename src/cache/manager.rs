@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 use log::{error, info};
 use redis::Commands;
 use serde::de::DeserializeOwned;
@@ -15,6 +16,16 @@ pub enum CacheType {
     MissionRaw,
     MissionKPIRaw,
     GlobalKPIState,
+}
+
+impl Display for CacheType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CacheType::MissionRaw => write!(f, "MissionRaw"),
+            CacheType::MissionKPIRaw => write!(f, "MissionKPIRaw"),
+            CacheType::GlobalKPIState => write!(f, "GlobalKPIState"),
+        }
+    }
 }
 
 impl CacheType {
@@ -86,8 +97,11 @@ impl Display for CacheError {
 
 impl Error for CacheError {}
 
+pub type CacheStatusMap = HashMap<CacheType, (i64, Result<CacheTimeInfo, CacheGenerationError>)>;
+
 pub struct CacheManager {
-    cache_status: Arc<Mutex<HashMap<CacheType, (i64, Result<CacheTimeInfo, CacheGenerationError>)>>>,
+    working: Arc<AtomicBool>,
+    cache_status: Arc<Mutex<CacheStatusMap>>,
     cache_context: Arc<Mutex<CacheContext>>,
     job_tx: std::sync::mpsc::SyncSender<CacheType>,
 }
@@ -97,16 +111,19 @@ impl CacheManager {
         let (tx, rx) = std::sync::mpsc::sync_channel(8);
 
         let result = CacheManager {
+            working: Arc::new(AtomicBool::new(false)),
             cache_status: Arc::new(Mutex::new(HashMap::new())),
             cache_context: Arc::new(Mutex::new(cache_context)),
             job_tx: tx,
         };
 
+        let thread_working = Arc::clone(&result.working);
         let thread_cache_status = Arc::clone(&result.cache_status);
         let thread_cache_context = Arc::clone(&result.cache_context);
 
         std::thread::Builder::new().name("cache manager thread".to_string()).spawn(move || {
             while let Ok(cache_type) = rx.recv() {
+                thread_working.store(true, std::sync::atomic::Ordering::Relaxed);
                 info!("updating cache: {:?}", cache_type);
                 let context = thread_cache_context.lock().unwrap();
 
@@ -124,6 +141,7 @@ impl CacheManager {
                 let mut cache_status = thread_cache_status.lock().unwrap();
 
                 cache_status.insert(cache_type, (chrono::Utc::now().timestamp(), result));
+                thread_working.store(false, std::sync::atomic::Ordering::Relaxed);
             }
         }).unwrap();
 
@@ -135,8 +153,8 @@ impl CacheManager {
         cache_status.get(cache_type).cloned()
     }
 
-    pub fn get_cache_status_all(&self) -> Vec<(i64, Result<CacheTimeInfo, CacheGenerationError>)> {
-        self.cache_status.lock().unwrap().iter().map(|(_, v)| v.clone()).collect()
+    pub fn get_cache_status_all(&self) -> CacheStatusMap {
+        self.cache_status.lock().unwrap().clone()
     }
 
     pub fn update_mapping(&self, mapping: Mapping) {
@@ -177,6 +195,10 @@ impl CacheManager {
 
     pub fn get_kpi_config(&self) -> Option<KPIConfig> {
         self.cache_context.lock().unwrap().kpi_config.clone()
+    }
+
+    pub fn is_working(&self) -> bool {
+        self.working.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
