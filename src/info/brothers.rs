@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::cache::mission::MissionCachedInfo;
 use crate::RE_SPOT_TIME_THRESHOLD;
-use crate::{APIResponse, AppState, DbPool};
+use crate::{APIResponse, DbPool};
 use actix_web::{
     get,
     web::{self, Data, Json},
@@ -13,8 +13,8 @@ use actix_web::{
 use crate::db::models::*;
 use crate::db::schema::*;
 use diesel::prelude::*;
-use log::{debug, error};
-use std::time::Instant;
+use log::error;
+use crate::cache::manager::get_db_redis_conn;
 
 #[derive(Serialize)]
 pub struct OverallInfo {
@@ -135,87 +135,45 @@ fn generate(
 
 #[get("/brothers")]
 async fn get_brothers_info(
-    app_state: Data<AppState>,
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
 ) -> Json<APIResponse<APIBrothers>> {
-    let mapping = app_state.mapping.lock().unwrap();
+    if let Ok((mut db_conn, mut redis_conn)) = get_db_redis_conn(&db_pool, &redis_client) {
+        match web::block(move || {
+            let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
+                .map_err(|e| e.to_string())?;
 
-    let entity_blacklist_set = mapping.entity_blacklist_set.clone();
-    let entity_combine = mapping.entity_combine.clone();
-    let weapon_combine = mapping.weapon_combine.clone();
+            let player_list = player::table
+                .select(Player::as_select())
+                .load(&mut db_conn)
+                .map_err(|e| e.to_string())?;
 
-    drop(mapping);
+            let player_id_to_name = player_list
+                .into_iter()
+                .map(|player| (player.id, player.player_name))
+                .collect::<HashMap<_, _>>();
 
-    let result = web::block(move || {
-        let begin = Instant::now();
-        let mut db_conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
+            let watchlist_player_id_list: Vec<i16> = player::table
+                .select(player::id)
+                .filter(player::friend.eq(true))
+                .load::<i16>(&mut db_conn).map_err(|e| e.to_string())?;
+
+            Ok::<_, String>(generate(
+                &cached_mission_list,
+                &player_id_to_name,
+                &watchlist_player_id_list,
+            ))
+        }).await.unwrap() {
+            Ok(brothers_info) => {
+                Json(APIResponse::ok(brothers_info))
             }
-        };
-
-        let mut redis_conn = match redis_client.get_connection() {
-            Ok(x) => x,
             Err(e) => {
-                error!("cannot get redis connection: {}", e);
-                return Err(());
+                error!("cannot get brothers info: {}", e);
+                Json(APIResponse::internal_error())
             }
-        };
-
-        let player_list = match player::table.select(Player::as_select()).load(&mut db_conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get player list: {}", e);
-                return Err(());
-            }
-        };
-
-        let player_id_to_name = player_list
-            .into_iter()
-            .map(|player| (player.id, player.player_name))
-            .collect::<HashMap<_, _>>();
-
-        let watchlist_player_id_list: Vec<i16> = match player::table
-            .select(player::id)
-            .filter(player::friend.eq(true))
-            .load::<i16>(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get player id list: {}", e);
-                return Err(());
-            }
-        };
-
-        let cached_mission_list = MissionCachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-        )?;
-
-        debug!("data prepared in {:?}", begin.elapsed());
-        let begin = Instant::now();
-
-        let result = generate(
-            &cached_mission_list,
-            &player_id_to_name,
-            &watchlist_player_id_list,
-        );
-
-        debug!("brothers info generated in {:?}", begin.elapsed());
-
-        Ok(result)
-    })
-    .await
-    .unwrap();
-
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(()) => Json(APIResponse::internal_error()),
+        }
+    } else {
+        error!("cannot get db connection");
+        Json(APIResponse::internal_error())
     }
 }

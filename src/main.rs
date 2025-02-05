@@ -19,11 +19,11 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Mutex;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::Pool;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use mission_backend_rs::cache::manager::{CacheContext, CacheManager};
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -62,13 +62,10 @@ async fn main() -> std::io::Result<()> {
     let kpi_config_path = instance_dir.as_path().join("kpi_config.json");
 
     let kpi_config: Option<KPIConfig> = match fs::read(&kpi_config_path) {
-        Ok(x) => match serde_json::from_slice(&x[..]) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot parse kpi config: {}", e);
-                None
-            }
-        },
+        Ok(x) => serde_json::from_slice(&x[..]).unwrap_or_else(|e| {
+            error!("cannot parse kpi config: {}", e);
+            None
+        }),
         Err(e) => {
             error!("cannot read kpi config: {}", e);
             None
@@ -97,15 +94,18 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let inner_mapping = Mutex::new(mapping);
-    let inner_kpi_config = Mutex::new(kpi_config);
+    let cache_context = CacheContext {
+        mapping: mapping.clone(),
+        kpi_config: kpi_config.clone(),
+        db_pool: db_pool.clone(),
+        redis_client: redis_client.clone(),
+    };
 
-    let app_state = web::Data::new(AppState {
-        access_token,
-        instance_path: instance_dir.clone(),
-        mapping: inner_mapping,
-        kpi_config: inner_kpi_config,
-    });
+    let cache_manager = web::Data::new(CacheManager::new(cache_context));
+
+    let _ = cache_manager.try_schedule_all();
+
+    let app_state = web::Data::new(AppState::new(access_token, instance_dir.clone()));
     let db_pool = web::Data::new(db_pool);
     let redis_client = web::Data::new(redis_client);
 
@@ -116,6 +116,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .app_data(db_pool.clone())
             .app_data(redis_client.clone())
+            .app_data(cache_manager.clone())
             .app_data(web::PayloadConfig::default().limit(MAX_BODY_LENGTH))
             .service(
                 web::scope("/api")
@@ -131,9 +132,9 @@ async fn main() -> std::io::Result<()> {
             )
             .service(actix_files::Files::new("/static", ".").index_file("index.html"))
     })
-    .bind(("0.0.0.0", 8080))?
-    .run()
-    .await
+        .bind(("0.0.0.0", 8080))?
+        .run()
+        .await
 }
 
 fn read_file_env(target_env: &str) -> Option<String> {
@@ -153,7 +154,7 @@ fn read_file_env(target_env: &str) -> Option<String> {
         }
     }
 
-    return result;
+    result
 }
 
 fn load_mapping(mapping_path: &Path) -> Mapping {
@@ -178,7 +179,7 @@ fn load_mapping(mapping_path: &Path) -> Mapping {
                 mapping_path.to_string_lossy(),
                 e
             );
-            return Mapping::default();
+            Mapping::default()
         }
     }
 }

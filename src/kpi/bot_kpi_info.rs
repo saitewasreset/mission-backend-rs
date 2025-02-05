@@ -3,17 +3,17 @@ use crate::cache::kpi::CachedGlobalKPIState;
 use crate::cache::mission::{MissionCachedInfo, MissionKPICachedInfo};
 use crate::db::models::*;
 use crate::db::schema::*;
-use crate::{APIResponse, AppState, DbPool};
+use crate::{APIResponse, DbPool};
 use crate::{KPIConfig, FLOAT_EPSILON};
 use actix_web::{
     get,
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::{debug, error};
+use log::error;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::Instant;
+use crate::cache::manager::{get_db_redis_conn, CacheError, CacheManager};
 
 #[derive(Serialize)]
 pub struct PlayerBotKPIInfo {
@@ -117,152 +117,68 @@ fn generate_bot_kpi_info(
 
 #[get("/bot_kpi_info")]
 async fn get_bot_kpi_info(
-    app_state: Data<AppState>,
+    cache_manager: Data<CacheManager>,
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
 ) -> Json<APIResponse<HashMap<String, PlayerBotKPIInfo>>> {
-    let mapping = app_state.mapping.lock().unwrap();
+    match get_db_redis_conn(&db_pool, &redis_client) {
+        Ok((mut db_conn, mut redis_conn)) => {
+            if let Some(kpi_config) = cache_manager.get_kpi_config() {
+                let result: Result<_, CacheError> = web::block(move || {
+                    let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)?;
 
-    let entity_blacklist_set = mapping.entity_blacklist_set.clone();
-    let entity_combine = mapping.entity_combine.clone();
-    let weapon_combine = mapping.weapon_combine.clone();
+                    let mission_kpi_cached_info_list = MissionKPICachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)?;
 
-    drop(mapping);
+                    let global_kpi_state = CachedGlobalKPIState::try_get_cached(&mut redis_conn)?;
 
-    let kpi_config = match app_state.kpi_config.lock().unwrap().clone() {
-        Some(x) => x,
-        None => {
-            return Json(APIResponse::config_required("kpi_config"));
+                    let invalid_mission_id_list = mission_invalid::table
+                        .select(mission_invalid::mission_id)
+                        .load::<i32>(&mut db_conn).map_err(|e| CacheError::InternalError(e.to_string()))?;
+
+                    let player_list = player::table
+                        .select(Player::as_select())
+                        .load::<_>(&mut db_conn).map_err(|e| CacheError::InternalError(e.to_string()))?;
+
+                    let watchlist_player_id_list = player_list
+                        .iter()
+                        .filter(|player| player.friend)
+                        .map(|player| player.id)
+                        .collect::<Vec<_>>();
+
+                    let player_id_to_name = player_list
+                        .into_iter()
+                        .map(|player| (player.id, player.player_name))
+                        .collect();
+
+                    let result = generate_bot_kpi_info(
+                        &cached_mission_list,
+                        &mission_kpi_cached_info_list,
+                        &invalid_mission_id_list,
+                        &watchlist_player_id_list,
+                        &player_id_to_name,
+                        &global_kpi_state,
+                        &kpi_config,
+                    );
+
+                    Ok(result)
+                })
+                    .await
+                    .unwrap();
+
+                match result {
+                    Ok(x) => Json(APIResponse::ok(x)),
+                    Err(e) => {
+                        error!("cannot get bot kpi info: {}", e);
+                        Json(APIResponse::internal_error())
+                    }
+                }
+            } else {
+                Json(APIResponse::config_required("kpi"))
+            }
         }
-    };
-
-    let scout_special_player_set = app_state
-        .mapping
-        .lock()
-        .unwrap()
-        .scout_special_player_set
-        .clone();
-
-    let result = web::block(move || {
-        let begin = Instant::now();
-
-        let mut db_conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
-            }
-        };
-
-        let mut redis_conn = match redis_client.get_connection() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get redis connection: {}", e);
-                return Err(());
-            }
-        };
-
-        let player_list = match player::table.select(Player::as_select()).load(&mut db_conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get player list: {}", e);
-                return Err(());
-            }
-        };
-
-        let watchlist_player_id_list = player_list
-            .iter()
-            .filter(|item| item.friend)
-            .map(|item| item.id)
-            .collect::<Vec<_>>();
-
-        let player_id_to_name = player_list
-            .into_iter()
-            .map(|player| (player.id, player.player_name))
-            .collect::<HashMap<_, _>>();
-
-        let character_list = match character::table
-            .select(Character::as_select())
-            .load(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get character list: {}", e);
-                return Err(());
-            }
-        };
-
-        let character_id_to_game_id = character_list
-            .into_iter()
-            .map(|character| (character.id, character.character_game_id))
-            .collect::<HashMap<_, _>>();
-
-        let invalid_mission_id_list = match mission_invalid::table
-            .select(mission_invalid::mission_id)
-            .load::<i32>(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get invalid mission id list: {}", e);
-                return Err(());
-            }
-        };
-
-        let cached_mission_list = MissionCachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-        )?;
-
-        let mission_kpi_cached_info_list = MissionKPICachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-            &character_id_to_game_id,
-            &player_id_to_name,
-            &scout_special_player_set,
-            &kpi_config,
-        )?;
-
-        let global_kpi_state = CachedGlobalKPIState::get_cached(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-            &invalid_mission_id_list,
-            &kpi_config,
-            &player_id_to_name,
-            &character_id_to_game_id,
-            &scout_special_player_set,
-        )?;
-
-        debug!("data prepared in {:?}", begin.elapsed());
-
-        let begin = Instant::now();
-
-        let result = generate_bot_kpi_info(
-            &cached_mission_list,
-            &mission_kpi_cached_info_list,
-            &invalid_mission_id_list,
-            &watchlist_player_id_list,
-            &player_id_to_name,
-            &global_kpi_state,
-            &kpi_config,
-        );
-
-        debug!("bot kpi info generated in {:?}", begin.elapsed());
-        Ok(result)
-    })
-    .await
-    .unwrap();
-
-    match result {
-        Ok(x) => Json(APIResponse::ok(x)),
-        Err(()) => Json(APIResponse::internal_error()),
+        Err(e) => {
+            error!("cannot get db connection: {}", e);
+            Json(APIResponse::internal_error())
+        }
     }
 }

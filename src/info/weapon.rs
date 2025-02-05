@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::cache::mission::MissionCachedInfo;
-use crate::{APIResponse, AppState, DbPool};
+use crate::{APIResponse, DbPool};
 use actix_web::{
     get,
     web::{self, Data, Json},
@@ -11,8 +11,8 @@ use crate::db::models::*;
 use crate::db::schema::*;
 use crate::{WEAPON_ORDER, WEAPON_TYPE};
 use diesel::prelude::*;
-use log::{debug, error};
-use std::time::Instant;
+use log::error;
+use crate::cache::manager::get_db_redis_conn;
 
 // character_game_id -> weapon_type(0, 1) -> Vec<(weapon_game_id, preference_index)>
 type WeaponPreferenceResponse = HashMap<String, HashMap<i16, Vec<(String, f64)>>>;
@@ -115,8 +115,7 @@ fn generate(
 
     result
         .iter_mut()
-        .map(|(_, v)| v.iter_mut())
-        .flatten()
+        .flat_map(|(_, v)| v.iter_mut())
         .for_each(|(_, v)| {
             v.sort_unstable_by(|(a_weapon_game_id, _), (b_weapon_game_id, _)| {
                 WEAPON_ORDER
@@ -131,86 +130,40 @@ fn generate(
 
 #[get("/weapon_preference")]
 async fn get_weapon_preference(
-    app_state: Data<AppState>,
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
 ) -> Json<APIResponse<WeaponPreferenceResponse>> {
-    let mapping = app_state.mapping.lock().unwrap();
-
-    let entity_blacklist_set = mapping.entity_blacklist_set.clone();
-    let entity_combine = mapping.entity_combine.clone();
-    let weapon_combine = mapping.weapon_combine.clone();
-
-    drop(mapping);
-
     let result = web::block(move || {
-        let begin = Instant::now();
-        let mut db_conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
-            }
-        };
+        let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)
+            .map_err(|e| format!("cannot get connection: {}", e))?;
 
-        let mut redis_conn = match redis_client.get_connection() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get redis connection: {}", e);
-                return Err(());
-            }
-        };
-
-        let invalid_mission_id_list: Vec<i32> = match mission_invalid::table
+        let invalid_mission_id_list: Vec<i32> = mission_invalid::table
             .select(mission_invalid::mission_id)
             .load(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get invalid mission id list: {}", e);
-                return Err(());
-            }
-        };
+            .map_err(|e| format!("cannot get invalid mission list from db: {}", e))?;
 
-        let character_list = match character::table
+        let character_list = character::table
             .select(Character::as_select())
             .load(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get character list: {}", e);
-                return Err(());
-            }
-        };
+            .map_err(|e| format!("cannot get character list: {}", e))?;
 
         let character_id_to_game_id = character_list
             .into_iter()
             .map(|character| (character.id, character.character_game_id))
             .collect::<HashMap<_, _>>();
 
-        let weapon_list = match weapon::table.select(Weapon::as_select()).load(&mut db_conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get weapon list: {}", e);
-                return Err(());
-            }
-        };
+        let weapon_list = weapon::table
+            .select(Weapon::as_select())
+            .load(&mut db_conn)
+            .map_err(|e| format!("cannot get weapon list: {}", e))?;
 
         let weapon_id_to_game_id = weapon_list
             .into_iter()
             .map(|weapon| (weapon.id, weapon.weapon_game_id))
             .collect::<HashMap<_, _>>();
 
-        let cached_mission_list = MissionCachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-        )?;
-
-        debug!("data prepared in {:?}", begin.elapsed());
-        let begin = Instant::now();
+        let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
+            .map_err(|e| format!("cannot get cached mission info: {}", e))?;
 
         let result = generate(
             &cached_mission_list,
@@ -219,15 +172,16 @@ async fn get_weapon_preference(
             &weapon_id_to_game_id,
         );
 
-        debug!("weapon preference info generated in {:?}", begin.elapsed());
-
-        Ok(result)
+        Ok::<_, String>(result)
     })
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     match result {
         Ok(x) => Json(APIResponse::ok(x)),
-        Err(()) => Json(APIResponse::internal_error()),
+        Err(e) => {
+            error!("cannot get weapon preference info: {}", e);
+            Json(APIResponse::internal_error())
+        }
     }
 }

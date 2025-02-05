@@ -1,7 +1,6 @@
 pub mod delete_mission;
 
-use crate::kpi::KPIConfig;
-use crate::{db::schema::player, APIResponse, AppState, DbPool, Mapping};
+use crate::{db::schema::player, APIResponse, AppState, DbPool};
 use actix_web::{
     post,
     web::{self, Buf, Bytes, Data, Json},
@@ -11,6 +10,7 @@ use diesel::prelude::*;
 use diesel::{insert_into, update};
 use log::{error, warn};
 use std::fs;
+use crate::cache::manager::CacheManager;
 
 #[derive(Insertable)]
 #[diesel(table_name = player)]
@@ -23,43 +23,33 @@ struct NewPlayer {
 async fn load_mapping(
     requests: HttpRequest,
     app_state: Data<AppState>,
+    cache_manager: Data<CacheManager>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if let Some(access_token) = app_state.access_token.clone() {
-        if let Some(provieded_access_token) = requests.cookie("access_token") {
-            if provieded_access_token.value() != access_token {
-                return Json(APIResponse::unauthorized());
-            }
-        } else {
-            return Json(APIResponse::unauthorized());
-        }
+    if !app_state.check_access_token(&requests) {
+        return Json(APIResponse::unauthorized());
     }
 
-    let mapping: Mapping = match serde_json::from_reader(body.reader()) {
-        Ok(x) => x,
-        Err(e) => {
-            warn!("cannot parse payload body as json: {}", e);
-            return Json(APIResponse::bad_request(
-                "cannot parse payload body as json",
-            ));
-        }
-    };
 
-    let write_path = app_state.instance_path.as_path().join("./mapping.json");
+    match api_parse_json_body(body) {
+        Err(e) => Json(APIResponse::bad_request(&e)),
+        Ok(mapping) => {
+            let write_path = app_state.instance_path.as_path().join("./mapping.json");
 
-    match fs::write(&write_path, serde_json::to_vec(&mapping).unwrap()) {
-        Err(e) => {
-            error!(
+            match fs::write(&write_path, serde_json::to_vec(&mapping).unwrap()) {
+                Err(e) => {
+                    error!(
                 "cannot write mapping to {}: {}",
                 write_path.to_string_lossy(),
                 e
             );
-            return Json(APIResponse::internal_error());
-        }
-        Ok(()) => {
-            let mut state_mapping = app_state.mapping.lock().unwrap();
-            *state_mapping = mapping;
-            return Json(APIResponse::ok(()));
+                    Json(APIResponse::internal_error())
+                }
+                Ok(()) => {
+                    cache_manager.update_mapping(mapping);
+                    Json(APIResponse::ok(()))
+                }
+            }
         }
     }
 }
@@ -71,14 +61,8 @@ async fn load_watchlist(
     db_pool: Data<DbPool>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if let Some(access_token) = app_state.access_token.clone() {
-        if let Some(provieded_access_token) = requests.cookie("access_token") {
-            if provieded_access_token.value() != access_token {
-                return Json(APIResponse::unauthorized());
-            }
-        } else {
-            return Json(APIResponse::unauthorized());
-        }
+    if !app_state.check_access_token(&requests) {
+        return Json(APIResponse::unauthorized());
     }
 
     let watchlist: Vec<String> = match serde_json::from_reader(body.reader()) {
@@ -135,8 +119,8 @@ async fn load_watchlist(
 
         Ok(())
     })
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     match result {
         Ok(()) => Json(APIResponse::ok(())),
@@ -148,43 +132,32 @@ async fn load_watchlist(
 async fn load_kpi(
     requests: HttpRequest,
     app_state: Data<AppState>,
+    cache_manager: Data<CacheManager>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if let Some(access_token) = app_state.access_token.clone() {
-        if let Some(provieded_access_token) = requests.cookie("access_token") {
-            if provieded_access_token.value() != access_token {
-                return Json(APIResponse::unauthorized());
-            }
-        } else {
-            return Json(APIResponse::unauthorized());
-        }
+    if !app_state.check_access_token(&requests) {
+        return Json(APIResponse::unauthorized());
     }
 
-    let kpi_config: KPIConfig = match serde_json::from_reader(body.reader()) {
-        Ok(x) => x,
-        Err(e) => {
-            warn!("cannot parse payload body as json: {}", e);
-            return Json(APIResponse::bad_request(
-                "cannot parse payload body as json",
-            ));
-        }
-    };
+    match api_parse_json_body(body) {
+        Err(e) => Json(APIResponse::bad_request(&e)),
+        Ok(kpi_config) => {
+            let write_path = app_state.instance_path.as_path().join("./kpi_config.json");
 
-    let write_path = app_state.instance_path.as_path().join("./kpi_config.json");
-
-    match fs::write(&write_path, serde_json::to_vec(&kpi_config).unwrap()) {
-        Err(e) => {
-            error!(
+            match fs::write(&write_path, serde_json::to_vec(&kpi_config).unwrap()) {
+                Err(e) => {
+                    error!(
                 "cannot write kpi config to {}: {}",
                 write_path.to_string_lossy(),
                 e
             );
-            return Json(APIResponse::internal_error());
-        }
-        Ok(()) => {
-            let mut state_kpi_config = app_state.kpi_config.lock().unwrap();
-            *state_kpi_config = Some(kpi_config);
-            return Json(APIResponse::ok(()));
+                    Json(APIResponse::internal_error())
+                }
+                Ok(()) => {
+                    cache_manager.update_kpi_config(kpi_config);
+                    Json(APIResponse::ok(()))
+                }
+            }
         }
     }
 }
@@ -196,14 +169,8 @@ async fn api_delete_mission(
     db_pool: Data<DbPool>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if let Some(access_token) = app_state.access_token.clone() {
-        if let Some(provieded_access_token) = requests.cookie("access_token") {
-            if provieded_access_token.value() != access_token {
-                return Json(APIResponse::unauthorized());
-            }
-        } else {
-            return Json(APIResponse::unauthorized());
-        }
+    if !app_state.check_access_token(&requests) {
+        return Json(APIResponse::unauthorized());
     }
 
     let to_delete_mission_list: Vec<i32> = match serde_json::from_reader(body.reader()) {
@@ -231,8 +198,8 @@ async fn api_delete_mission(
 
         Ok(())
     })
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     match result {
         Ok(()) => Json(APIResponse::ok(())),
@@ -245,4 +212,16 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(load_watchlist);
     cfg.service(load_kpi);
     cfg.service(api_delete_mission);
+}
+
+pub fn api_parse_json_body<T: serde::de::DeserializeOwned>(
+    body: Bytes,
+) -> Result<T, String> {
+    match serde_json::from_reader(body.reader()) {
+        Ok(x) => Ok(x),
+        Err(e) => {
+            warn!("cannot parse payload body as json: {}", e);
+            Err("cannot parse payload body as json".to_string())
+        }
+    }
 }

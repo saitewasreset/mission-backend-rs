@@ -1,77 +1,35 @@
 use super::EntityDamageInfo;
 use crate::cache::mission::MissionCachedInfo;
 use crate::db::schema::*;
-use crate::{APIResponse, AppState, DbPool};
+use crate::{APIResponse, DbPool};
 use actix_web::{
     get,
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::{debug, error};
+use log::error;
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
+use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
 #[get("/entity")]
 async fn get_damage_entity(
-    app_state: Data<AppState>,
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
+    cache_manager: Data<CacheManager>,
 ) -> Json<APIResponse<EntityDamageInfo>> {
-    let mapping = app_state.mapping.lock().unwrap();
-
-    let entity_blacklist_set = mapping.entity_blacklist_set.clone();
-    let entity_combine = mapping.entity_combine.clone();
-    let weapon_combine = mapping.weapon_combine.clone();
-    let entity_mapping = mapping.entity_mapping.clone();
-
-    drop(mapping);
+    let entity_mapping = cache_manager.get_mapping().entity_mapping;
 
     let result = web::block(move || {
-        let begin = Instant::now();
+        let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)
+            .map_err(|e| format!("cannot get connection: {}", e))?;
 
-        let mut db_conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
-            }
-        };
+        let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
+            .map_err(|e| format!("cannot get cached mission info: {}", e))?;
 
-        let mut redis_conn = match redis_client.get_connection() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get redis connection: {}", e);
-                return Err(());
-            }
-        };
-
-        let cached_mission_list = match MissionCachedInfo::get_cached_all(
-            &mut db_conn,
-            &mut redis_conn,
-            &entity_blacklist_set,
-            &entity_combine,
-            &weapon_combine,
-        ) {
-            Ok(x) => x,
-            Err(()) => {
-                error!("cannot get cached mission list");
-                return Err(());
-            }
-        };
-
-        let invalid_mission_id_list: Vec<i32> = match mission_invalid::table
+        let invalid_mission_id_list: Vec<i32> = mission_invalid::table
             .select(mission_invalid::mission_id)
-            .load(&mut db_conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get invalid mission list from db: {}", e);
-                return Err(());
-            }
-        };
+            .load(&mut db_conn).map_err(|e| format!("cannot get invalid mission list from db: {}", e))?;
 
-        debug!("data prepared in {:?}", begin.elapsed());
-        let begin = Instant::now();
 
         let result = generate(
             &cached_mission_list,
@@ -79,16 +37,17 @@ async fn get_damage_entity(
             entity_mapping,
         );
 
-        debug!("entity damage info generated in {:?}", begin.elapsed());
-
-        Ok(result)
+        Ok::<_, String>(result)
     })
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     match result {
         Ok(x) => Json(APIResponse::ok(x)),
-        Err(()) => Json(APIResponse::internal_error()),
+        Err(e) => {
+            error!("cannot get entity damage info: {}", e);
+            Json(APIResponse::internal_error())
+        }
     }
 }
 

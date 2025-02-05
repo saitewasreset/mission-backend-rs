@@ -7,15 +7,67 @@ use crate::kpi::{
 use crate::{FLOAT_EPSILON, NITRA_GAME_ID};
 use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
-use log::{debug, error, info, warn};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 use std::time::{Duration, Instant};
-
+use crate::cache::manager::{get_from_redis, CacheContext, CacheError, CacheGenerationError, Cacheable};
 // 用于缓存输出任务详情及计算任务KPI、玩家KPI、赋分信息等需要的任务信息
 // depends on:
 // - mapping: entity_blacklist, entity_combine, weapon_combine
+
+#[derive(Default, Debug, Copy, Clone, Hash)]
+pub struct CacheTimeInfo {
+    pub count: usize,
+    pub load_from_db: Option<Duration>,
+    pub generate: Duration,
+}
+
+impl Display for CacheTimeInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "count: {}, total: {:?} = {:?}(load_from_db) + {:?}(generate)",
+            self.count,
+            self.load_from_db.unwrap_or_default() + self.generate,
+            self.load_from_db.unwrap_or_default(),
+            self.generate
+        )
+    }
+}
+
+impl CacheTimeInfo {
+    pub fn from_duration_load_from_db(duration: Duration) -> Self {
+        CacheTimeInfo {
+            count: 1,
+            load_from_db: Some(duration),
+            generate: Duration::default(),
+        }
+    }
+
+    pub fn from_duration_generate(duration: Duration) -> Self {
+        CacheTimeInfo {
+            count: 1,
+            load_from_db: None,
+            generate: duration,
+        }
+    }
+
+    pub fn add_load_from_db(&mut self, duration: Duration) {
+        self.load_from_db = Some(self.load_from_db.unwrap_or_default() + duration);
+    }
+
+    pub fn add_generate(&mut self, duration: Duration) {
+        self.generate += duration;
+    }
+
+    pub fn count(mut self, count: usize) -> Self {
+        self.count = count;
+
+        self
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct MissionCachedInfo {
@@ -38,6 +90,13 @@ pub struct MissionCachedInfo {
     pub supply_info: HashMap<i16, Vec<SupplyPack>>,
 }
 
+pub fn cache_write_redis(data: impl Serialize, key: &str, redis_conn: &mut redis::Connection) -> Result<(), String> {
+    let serialized = rmp_serde::to_vec(&data).map_err(|e| format!("cannot serialize data: {}", e))?;
+    redis_conn.set::<_, _, ()>(key, serialized).map_err(|e| format!("cannot write data to redis: {}", e))?;
+
+    Ok(())
+}
+
 impl MissionCachedInfo {
     fn generate(
         mission_info: &Mission,
@@ -53,7 +112,7 @@ impl MissionCachedInfo {
         id_to_entity_game_id: &HashMap<i16, String>,
         id_to_weapon_game_id: &HashMap<i16, String>,
         id_to_resource_game_id: &HashMap<i16, String>,
-    ) -> (Self, Duration) {
+    ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
 
         let mut player_index = HashMap::with_capacity(player_info_list.len());
@@ -216,7 +275,6 @@ impl MissionCachedInfo {
                 let weapon_id = weapon_game_id_to_id.get(weapon_game_id).unwrap();
                 let total_damage = detail
                     .values()
-                    .into_iter()
                     .map(|v| v.total_amount)
                     .sum::<f64>();
                 let detail_map = detail
@@ -279,11 +337,6 @@ impl MissionCachedInfo {
 
         let elapsed = begin.elapsed();
 
-        debug!(
-            "generated cached mission info for {} in {:?}",
-            mission_info.id, elapsed
-        );
-
         (
             MissionCachedInfo {
                 mission_info: mission_info.clone(),
@@ -297,7 +350,11 @@ impl MissionCachedInfo {
                 death_count,
                 supply_info,
             },
-            elapsed,
+            CacheTimeInfo {
+                count: 1,
+                load_from_db: None,
+                generate: elapsed,
+            },
         )
     }
 
@@ -307,40 +364,16 @@ impl MissionCachedInfo {
         entity_combine: &HashMap<String, String>,
         weapon_combine: &HashMap<String, String>,
         mission_id: i32,
-    ) -> Result<Self, ()> {
+    ) -> Result<(Self, CacheTimeInfo), String> {
         let begin = Instant::now();
 
-        let player_list: Vec<Player> = match player::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load player from db: {}", e);
-                return Err(());
-            }
-        };
+        let player_list: Vec<Player> = player::table.load(conn).map_err(|e| format!("cannot load player from db: {}", e))?;
 
-        let entity_list: Vec<Entity> = match entity::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load entity from db: {}", e);
-                return Err(());
-            }
-        };
+        let entity_list: Vec<Entity> = entity::table.load(conn).map_err(|e| format!("cannot load entity from db: {}", e))?;
 
-        let resource_list: Vec<Resource> = match resource::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load resource from db: {}", e);
-                return Err(());
-            }
-        };
+        let resource_list: Vec<Resource> = resource::table.load(conn).map_err(|e| format!("cannot load resource from db: {}", e))?;
 
-        let weapon_list: Vec<Weapon> = match weapon::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load weapon from db: {}", e);
-                return Err(());
-            }
-        };
+        let weapon_list: Vec<Weapon> = weapon::table.load(conn).map_err(|e| format!("cannot load weapon from db: {}", e))?;
 
         let id_to_player_name = player_list
             .into_iter()
@@ -362,75 +395,33 @@ impl MissionCachedInfo {
             .map(|weapon| (weapon.id, weapon.weapon_game_id))
             .collect::<HashMap<_, _>>();
 
-        let mission_info: Mission = match mission::table
+        let mission_info: Mission = mission::table
             .filter(mission::id.eq(mission_id))
-            .get_result(conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load mission_id = {} from db: {}", mission_id, e);
-                return Err(());
-            }
-        };
+            .get_result(conn).map_err(|e| format!("cannot load mission_id = {} from db: {}", mission_id, e))?;
 
-        let player_info: Vec<PlayerInfo> = match PlayerInfo::belonging_to(&mission_info).load(conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!(
-                    "cannot load player info for mission_id = {} from db: {}",
-                    mission_id, e
-                );
-                return Err(());
-            }
-        };
+        let player_info: Vec<PlayerInfo> = PlayerInfo::belonging_to(&mission_info).load(conn).map_err(|e| format!(
+            "cannot load player info for mission_id = {} from db: {}", mission_id, e
+        ))?;
 
-        let damage_info: Vec<DamageInfo> = match DamageInfo::belonging_to(&mission_info).load(conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!(
-                    "cannot load damage info for mission_id = {} from db: {}",
-                    mission_id, e
-                );
-                return Err(());
-            }
-        };
 
-        let kill_info: Vec<KillInfo> = match KillInfo::belonging_to(&mission_info).load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!(
-                    "cannot load kill info for mission_id = {} from db: {}",
-                    mission_id, e
-                );
-                return Err(());
-            }
-        };
+        let damage_info: Vec<DamageInfo> = DamageInfo::belonging_to(&mission_info).load(conn).map_err(|e| format!(
+            "cannot load damage info for mission_id = {} from db: {}", mission_id, e
+        ))?;
+
+
+        let kill_info: Vec<KillInfo> = KillInfo::belonging_to(&mission_info).load(conn).map_err(|e| format!(
+            "cannot load kill info for mission_id = {} from db: {}", mission_id, e
+        ))?;
 
         let resource_info: Vec<ResourceInfo> =
-            match ResourceInfo::belonging_to(&mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!(
-                        "cannot load resource info for mission_id = {} from db: {}",
-                        mission_id, e
-                    );
-                    return Err(());
-                }
-            };
+            ResourceInfo::belonging_to(&mission_info).load(conn).map_err(|e| format!(
+                "cannot load resource info for mission_id = {} from db: {}", mission_id, e
+            ))?;
 
-        let supply_info: Vec<SupplyInfo> = match SupplyInfo::belonging_to(&mission_info).load(conn)
-        {
-            Ok(x) => x,
-            Err(e) => {
-                error!(
-                    "cannot load supply info for mission_id = {} from db: {}",
-                    mission_id, e
-                );
-                return Err(());
-            }
-        };
+        let supply_info: Vec<SupplyInfo> = SupplyInfo::belonging_to(&mission_info).load(conn).map_err(|e| format!(
+            "cannot load supply info for mission_id = {} from db: {}", mission_id, e
+        ))?;
+
 
         let load_from_db_elapsed = begin.elapsed();
 
@@ -450,9 +441,14 @@ impl MissionCachedInfo {
             &id_to_resource_game_id,
         );
 
-        info!("generated cached mission info from db for {} in {:?}(total) = {:?}(load_from_db) + {:?}(generate)", mission_id, load_from_db_elapsed + generate_elapsed, load_from_db_elapsed, generate_elapsed);
-
-        Ok(result)
+        Ok(
+            (result,
+             CacheTimeInfo {
+                 count: 1,
+                 load_from_db: Some(load_from_db_elapsed),
+                 generate: generate_elapsed.generate,
+             })
+        )
     }
 
     pub fn from_db_all(
@@ -460,40 +456,16 @@ impl MissionCachedInfo {
         entity_blacklist_set: &HashSet<String>,
         entity_combine: &HashMap<String, String>,
         weapon_combine: &HashMap<String, String>,
-    ) -> Result<Vec<Self>, ()> {
+    ) -> Result<(Vec<Self>, CacheTimeInfo), String> {
         let begin = Instant::now();
 
-        let player_list: Vec<Player> = match player::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load player from db: {}", e);
-                return Err(());
-            }
-        };
+        let player_list: Vec<Player> = player::table.load(conn).map_err(|e| format!("cannot load player from db: {}", e))?;
 
-        let entity_list: Vec<Entity> = match entity::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load entity from db: {}", e);
-                return Err(());
-            }
-        };
+        let entity_list: Vec<Entity> = entity::table.load(conn).map_err(|e| format!("cannot load entity from db: {}", e))?;
 
-        let resource_list: Vec<Resource> = match resource::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load resource from db: {}", e);
-                return Err(());
-            }
-        };
+        let resource_list: Vec<Resource> = resource::table.load(conn).map_err(|e| format!("cannot load resource from db: {}", e))?;
 
-        let weapon_list: Vec<Weapon> = match weapon::table.load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load weapon from db: {}", e);
-                return Err(());
-            }
-        };
+        let weapon_list: Vec<Weapon> = weapon::table.load(conn).map_err(|e| format!("cannot load weapon from db: {}", e))?;
 
         let id_to_player_name = player_list
             .into_iter()
@@ -515,58 +487,22 @@ impl MissionCachedInfo {
             .map(|weapon| (weapon.id, weapon.weapon_game_id))
             .collect::<HashMap<_, _>>();
 
-        let all_mission_info = match mission::table.select(Mission::as_select()).load(conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot load missions from db: {}", e);
-                return Err(());
-            }
-        };
+        let all_mission_info = mission::table.select(Mission::as_select()).load(conn).map_err(|e| format!("cannot load missions from db: {}", e))?;
 
         let all_player_info: Vec<PlayerInfo> =
-            match PlayerInfo::belonging_to(&all_mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("cannot load player info from db: {}", e);
-                    return Err(());
-                }
-            };
+            PlayerInfo::belonging_to(&all_mission_info).load(conn).map_err(|e| format!("cannot load player info from db: {}", e))?;
 
         let all_damage_info: Vec<DamageInfo> =
-            match DamageInfo::belonging_to(&all_mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("cannot load damage info from db: {}", e);
-                    return Err(());
-                }
-            };
+            DamageInfo::belonging_to(&all_mission_info).load(conn).map_err(|e| format!("cannot load damage info from db: {}", e))?;
 
         let all_kill_info: Vec<KillInfo> =
-            match KillInfo::belonging_to(&all_mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("cannot load kill info from db: {}", e);
-                    return Err(());
-                }
-            };
+            KillInfo::belonging_to(&all_mission_info).load(conn).map_err(|e| format!("cannot load kill info from db: {}", e))?;
 
         let all_resource_info: Vec<ResourceInfo> =
-            match ResourceInfo::belonging_to(&all_mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("cannot load resource info from db: {}", e);
-                    return Err(());
-                }
-            };
+            ResourceInfo::belonging_to(&all_mission_info).load(conn).map_err(|e| format!("cannot load resource info from db: {}", e))?;
 
         let all_supply_info: Vec<SupplyInfo> =
-            match SupplyInfo::belonging_to(&all_mission_info).load(conn) {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("cannot load supply info from db: {}", e);
-                    return Err(());
-                }
-            };
+            SupplyInfo::belonging_to(&all_mission_info).load(conn).map_err(|e| format!("cannot load supply info from db: {}", e))?;
 
         let load_from_db_elapsed = begin.elapsed();
         let begin = Instant::now();
@@ -624,126 +560,84 @@ impl MissionCachedInfo {
                     &id_to_weapon_game_id,
                     &id_to_resource_game_id,
                 )
-                .0
+                    .0
             })
             .collect::<Vec<_>>();
 
         let generate_elapsed = begin.elapsed();
 
-        info!("generated {} cached mission info from db in {:?}(total) = {:?}(load_from_db) + {:?}(generate)", result.len(), load_from_db_elapsed + generate_elapsed, load_from_db_elapsed, generate_elapsed);
+        let count = result.len();
 
-        Ok(result)
+        Ok((result, CacheTimeInfo {
+            count,
+            load_from_db: Some(load_from_db_elapsed),
+            generate: generate_elapsed,
+        }))
     }
 
-    pub fn get_cached(
-        db_conn: &mut PgConnection,
+    pub fn try_get_cached(
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
         mission_id: i32,
-    ) -> Result<Self, ()> {
-        let cached_bytes: Option<Vec<u8>> =
-            redis_conn.get(format!("mission_raw:{}", mission_id)).ok();
+    ) -> Result<Self, CacheError> {
+        let redis_key = format!("mission_raw:{}", mission_id);
 
-        let cached_content = match cached_bytes {
-            Some(x) => {
-                let decoded: MissionCachedInfo = match rmp_serde::from_read(&x[..]) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        error!("cannot decode cached bytes: {}", e);
-                        return Err(());
-                    }
-                };
-
-                decoded
-            }
-            None => {
-                match Self::from_db(
-                    db_conn,
-                    entity_blacklist_set,
-                    entity_combine,
-                    weapon_combine,
-                    mission_id,
-                ) {
-                    Ok(x) => {
-                        let serialized = rmp_serde::to_vec(&x).unwrap();
-                        match redis_conn.set(format!("mission_raw:{}", mission_id), serialized) {
-                            Ok(()) => x,
-                            Err(e) => {
-                                error!("cannot write data to redis: {}", e);
-                                return Err(());
-                            }
-                        }
-                    }
-                    Err(()) => return Err(()),
-                }
-            }
-        };
-
-        Ok(cached_content)
+        get_from_redis(redis_conn, &redis_key)
     }
 
-    pub fn get_cached_all(
+    pub fn try_get_cached_all(
         db_conn: &mut PgConnection,
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
-    ) -> Result<Vec<Self>, ()> {
-        let mission_list = match mission::table.select(Mission::as_select()).load(db_conn) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get mission list from db: {}", e);
-                return Err(());
-            }
-        };
+    ) -> Result<Vec<Self>, CacheError> {
+        let mission_list = mission::table
+            .select(Mission::as_select())
+            .load(db_conn)
+            .map_err(|e| CacheError::InternalError(format!("cannot get mission list from db: {}", e)))?;
 
         let mut result = Vec::with_capacity(mission_list.len());
 
         for mission in mission_list {
             let redis_key = format!("mission_raw:{}", mission.id);
 
-            let cached_info = match redis_conn.get::<_, Vec<u8>>(&redis_key) {
-                Ok(x) => match rmp_serde::from_slice(&x[..]) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        error!("cannot decode cached bytes: {}", e);
-                        return Err(());
-                    }
-                },
-                Err(e) => {
-                    warn!("cannot get mission {} from redis: {}", mission.id, e);
-
-                    match Self::from_db(
-                        db_conn,
-                        entity_blacklist_set,
-                        entity_combine,
-                        weapon_combine,
-                        mission.id,
-                    ) {
-                        Ok(x) => {
-                            let serialized = rmp_serde::to_vec(&x).unwrap();
-                            if redis_conn
-                                .set::<_, Vec<u8>, ()>(&redis_key, serialized)
-                                .is_err()
-                            {
-                                error!("cannot write data to redis: {}", e);
-                                return Err(());
-                            }
-                            x
-                        }
-                        Err(()) => {
-                            return Err(());
-                        }
-                    }
-                }
-            };
-
-            result.push(cached_info);
+            result.push(get_from_redis(redis_conn, &redis_key)?);
         }
 
         Ok(result)
+    }
+}
+
+impl Cacheable for MissionCachedInfo {
+    fn name(&self) -> &str {
+        "mission_raw"
+    }
+    fn generate_and_write(context: &CacheContext) -> Result<CacheTimeInfo, CacheGenerationError> {
+        let begin = Instant::now();
+
+        let entity_blacklist_set = &context.mapping.entity_blacklist_set;
+        let entity_combine = &context.mapping.entity_combine;
+        let weapon_combine = &context.mapping.weapon_combine;
+
+        let (mut db_conn, mut redis_conn) = crate::cache::manager::get_db_redis_conn(
+            &context.db_pool, &context.redis_client)?;
+
+        let load_from_db_duration = begin.elapsed();
+
+        let (cache_result, mut time_info) = MissionCachedInfo::from_db_all(
+            &mut db_conn,
+            entity_blacklist_set,
+            entity_combine,
+            weapon_combine,
+        ).map_err(|e| CacheGenerationError::InternalError(format!("cannot update mission raw cache: {}", e)))?;
+
+        for cached_info in cache_result {
+            let redis_key = format!("mission_raw:{}", cached_info.mission_info.id);
+            cache_write_redis(&cached_info, &redis_key, &mut redis_conn).map_err(CacheGenerationError::InternalError)?;
+        }
+
+        let _ = redis::cmd("SAVE").exec(&mut redis_conn);
+
+        time_info.add_load_from_db(load_from_db_duration);
+
+        Ok(time_info)
     }
 }
 
@@ -780,7 +674,7 @@ impl MissionKPICachedInfo {
         player_id_to_name: &HashMap<i16, String>,
         scout_special_player_set: &HashSet<String>,
         kpi_config: &KPIConfig,
-    ) -> (Self, Duration) {
+    ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
 
         let damage_map = mission_info
@@ -979,8 +873,8 @@ impl MissionKPICachedInfo {
                     .unwrap_or(&HashMap::new()),
                 &kpi_config.resource_weight_table,
             )
-            .values()
-            .sum::<f64>();
+                .values()
+                .sum::<f64>();
 
             let total_weighted_minerals = total_weighted_resource_map.values().sum::<f64>();
 
@@ -1125,33 +1019,24 @@ impl MissionKPICachedInfo {
 
         let elapsed = begin.elapsed();
 
-        debug!(
-            "generated cached kpi info for {} in {:?}",
-            mission_info.mission_info.id, elapsed
-        );
-
-        (result, elapsed)
+        (result, CacheTimeInfo {
+            count: 1,
+            load_from_db: None,
+            generate: elapsed,
+        })
     }
 
     pub fn from_redis_all(
         db_conn: &mut PgConnection,
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
         character_id_to_game_id: &HashMap<i16, String>,
         player_id_to_name: &HashMap<i16, String>,
         scout_special_player_set: &HashSet<String>,
         kpi_config: &KPIConfig,
-    ) -> Result<Vec<Self>, ()> {
+    ) -> Result<(Vec<Self>, CacheTimeInfo), CacheError> {
         let begin = Instant::now();
-        let mission_list = MissionCachedInfo::get_cached_all(
-            db_conn,
-            redis_conn,
-            entity_blacklist_set,
-            entity_combine,
-            weapon_combine,
-        )?;
+
+        let mission_list = MissionCachedInfo::try_get_cached_all(db_conn, redis_conn)?;
 
         let load_from_redis_elapsed = begin.elapsed();
         let begin = Instant::now();
@@ -1166,138 +1051,103 @@ impl MissionKPICachedInfo {
                 scout_special_player_set,
                 kpi_config,
             )
-            .0;
+                .0;
             result.push(generated);
         }
 
         let generate_elapsed = begin.elapsed();
 
-        info!("generated {} cached mission kpi info from redis in {:?}(total) = {:?}(load_from_redis) + {:?}(generate)", result.len(), load_from_redis_elapsed + generate_elapsed, load_from_redis_elapsed, generate_elapsed);
+        let count = result.len();
 
-        Ok(result)
+        Ok((result, CacheTimeInfo {
+            count,
+            load_from_db: Some(load_from_redis_elapsed),
+            generate: generate_elapsed,
+        }))
     }
 
-    pub fn get_cached(
-        db_conn: &mut PgConnection,
+    pub fn try_get_cached(
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
-        character_id_to_game_id: &HashMap<i16, String>,
-        player_id_to_name: &HashMap<i16, String>,
-        scout_special_player_set: &HashSet<String>,
-        kpi_config: &KPIConfig,
         mission_id: i32,
-    ) -> Result<Self, ()> {
-        let cached_bytes: Option<Vec<u8>> = redis_conn
-            .get(format!("mission_kpi_raw:{}", mission_id))
-            .ok();
+    ) -> Result<Self, CacheError> {
+        let redis_key = format!("mission_kpi_raw:{}", mission_id);
 
-        let cached_content = match cached_bytes {
-            Some(x) => {
-                let decoded: MissionKPICachedInfo = match rmp_serde::from_read(&x[..]) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        error!("cannot decode cached bytes: {}", e);
-                        return Err(());
-                    }
-                };
-
-                decoded
-            }
-            None => {
-                let mission = MissionCachedInfo::get_cached(
-                    db_conn,
-                    redis_conn,
-                    entity_blacklist_set,
-                    entity_combine,
-                    weapon_combine,
-                    mission_id,
-                )?;
-                let generated = Self::generate(
-                    &mission,
-                    character_id_to_game_id,
-                    player_id_to_name,
-                    scout_special_player_set,
-                    kpi_config,
-                )
-                .0;
-                let serialized = rmp_serde::to_vec(&generated).unwrap();
-                match redis_conn.set(format!("mission_kpi_raw:{}", mission_id), serialized) {
-                    Ok(()) => generated,
-                    Err(e) => {
-                        error!("cannot write data to redis: {}", e);
-                        return Err(());
-                    }
-                }
-            }
-        };
-
-        Ok(cached_content)
+        get_from_redis(redis_conn, &redis_key)
     }
 
-    pub fn get_cached_all(
+    pub fn try_get_cached_all(
         db_conn: &mut PgConnection,
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
-        character_id_to_game_id: &HashMap<i16, String>,
-        player_id_to_name: &HashMap<i16, String>,
-        scout_special_player_set: &HashSet<String>,
-        kpi_config: &KPIConfig,
-    ) -> Result<Vec<Self>, ()> {
-        let mission_list = MissionCachedInfo::get_cached_all(
-            db_conn,
-            redis_conn,
-            entity_blacklist_set,
-            entity_combine,
-            weapon_combine,
-        )?;
+    ) -> Result<Vec<Self>, CacheError> {
+        let mission_list = MissionCachedInfo::try_get_cached_all(db_conn, redis_conn)?;
 
         let mut result = Vec::with_capacity(mission_list.len());
 
         for mission_info in &mission_list {
             let mission_id = mission_info.mission_info.id;
-            let cached_bytes: Option<Vec<u8>> = redis_conn
-                .get(format!("mission_kpi_raw:{}", mission_id))
-                .ok();
 
-            let cached_content = match cached_bytes {
-                Some(x) => {
-                    let decoded: MissionKPICachedInfo = match rmp_serde::from_read(&x[..]) {
-                        Ok(x) => x,
-                        Err(e) => {
-                            error!("cannot decode cached bytes: {}", e);
-                            return Err(());
-                        }
-                    };
-
-                    decoded
-                }
-                None => {
-                    let generated = Self::generate(
-                        &mission_info,
-                        character_id_to_game_id,
-                        player_id_to_name,
-                        scout_special_player_set,
-                        kpi_config,
-                    )
-                    .0;
-                    let serialized = rmp_serde::to_vec(&generated).unwrap();
-                    match redis_conn.set(format!("mission_kpi_raw:{}", mission_id), serialized) {
-                        Ok(()) => generated,
-                        Err(e) => {
-                            error!("cannot write data to redis: {}", e);
-                            return Err(());
-                        }
-                    }
-                }
-            };
-
+            let cached_content = Self::try_get_cached(redis_conn, mission_id)?;
             result.push(cached_content);
         }
 
         Ok(result)
+    }
+}
+
+impl Cacheable for MissionKPICachedInfo {
+    fn name(&self) -> &str {
+        "mission_kpi_raw"
+    }
+    fn generate_and_write(context: &CacheContext) -> Result<CacheTimeInfo, CacheGenerationError> {
+        let begin = Instant::now();
+
+        let (mut db_conn, mut redis_conn) = crate::cache::manager::get_db_redis_conn(&context.db_pool, &context.redis_client)?;
+
+        let character_list = character::table
+            .select(Character::as_select())
+            .load(&mut db_conn)
+            .map_err(|e| CacheGenerationError::InternalError(format!("cannot get character list from db: {}", e)))?;
+
+        let character_id_to_game_id = character_list
+            .into_iter()
+            .map(|character| (character.id, character.character_game_id))
+            .collect::<HashMap<_, _>>();
+
+        let player_list = player::table
+            .select(Player::as_select())
+            .load(&mut db_conn)
+            .map_err(|e| CacheGenerationError::InternalError(format!("cannot get player list from db: {}", e)))?;
+
+        let player_id_to_game_id = player_list
+            .into_iter()
+            .map(|player| (player.id, player.player_name))
+            .collect::<HashMap<_, _>>();
+
+        let scout_special_player_set = &context.mapping.scout_special_player_set;
+
+        let kpi_config = context.kpi_config.as_ref()
+            .ok_or(CacheGenerationError::ConfigError("kpi config".to_string()))?;
+
+        let load_from_db = begin.elapsed();
+
+        let (cache_result, mut time_info) = MissionKPICachedInfo::from_redis_all(
+            &mut db_conn,
+            &mut redis_conn,
+            &character_id_to_game_id,
+            &player_id_to_game_id,
+            scout_special_player_set,
+            kpi_config,
+        ).map_err(|e| CacheGenerationError::InternalError(format!("cannot update mission kpi cache: {}", e)))?;
+
+        for cached_info in cache_result {
+            let redis_key = format!("mission_kpi_raw:{}", cached_info.mission_id);
+            cache_write_redis(&cached_info, &redis_key, &mut redis_conn).map_err(CacheGenerationError::InternalError)?;
+        }
+
+        let _ = redis::cmd("SAVE").exec(&mut redis_conn);
+
+        time_info.add_load_from_db(load_from_db);
+
+        Ok(time_info)
     }
 }

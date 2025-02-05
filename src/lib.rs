@@ -7,20 +7,18 @@ pub mod general;
 pub mod info;
 pub mod kpi;
 pub mod mission;
-use actix_web::{
-    get,
-    web::{Data, Json},
-};
+use actix_web::{get, web::{Data, Json}, HttpRequest};
 use diesel::pg::PgConnection;
-use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use kpi::{KPIComponent, KPIConfig};
 use serde::{Deserialize, Serialize};
 use std::cell::LazyCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
-
+use crate::cache::manager::CacheManager;
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
+
+pub type DbConn = PooledConnection<ConnectionManager<PgConnection>>;
 
 pub const NITRA_GAME_ID: &str = "RES_VEIN_Nitra";
 pub const FLOAT_EPSILON: f64 = 1e-3;
@@ -106,7 +104,7 @@ pub const WEAPON_ORDER: LazyCell<HashMap<&str, i16>> = LazyCell::new(|| {
     ])
 });
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Mapping {
     #[serde(default)]
     pub character_mapping: HashMap<String, String>,
@@ -130,28 +128,34 @@ pub struct Mapping {
     pub scout_special_player_set: HashSet<String>,
 }
 
-impl Default for Mapping {
-    fn default() -> Self {
-        Mapping {
-            character_mapping: HashMap::new(),
-            entity_mapping: HashMap::new(),
-            entity_blacklist_set: HashSet::new(),
-            entity_combine: HashMap::new(),
-            mission_type_mapping: HashMap::new(),
-            resource_mapping: HashMap::new(),
-            weapon_mapping: HashMap::new(),
-            weapon_combine: HashMap::new(),
-            weapon_character: HashMap::new(),
-            scout_special_player_set: HashSet::new(),
-        }
-    }
+pub struct AppState {
+    access_token: Option<String>,
+    instance_path: PathBuf,
 }
 
-pub struct AppState {
-    pub access_token: Option<String>,
-    pub instance_path: PathBuf,
-    pub mapping: Mutex<Mapping>,
-    pub kpi_config: Mutex<Option<KPIConfig>>,
+impl AppState {
+    pub fn new(access_token: Option<String>, instance_path: PathBuf) -> Self {
+        AppState {
+            access_token,
+            instance_path,
+        }
+    }
+
+    pub fn get_access_token(&self) -> Option<&str> {
+        self.access_token.as_deref()
+    }
+
+    pub fn check_access_token(&self, request: &HttpRequest) -> bool {
+        if let Some(access_token) = &self.access_token {
+            if let Some(provided_access_token) = request.cookie("access_token") {
+                provided_access_token.value() == access_token
+            } else {
+                false
+            }
+        } else {
+            true
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -221,6 +225,17 @@ impl<'a, T: Serialize> APIResponse<T> {
             data: None,
         }
     }
+
+    pub fn busy(for_what: &str) -> Self {
+        APIResponse {
+            code: 1002,
+            message: format!(
+                "Multiplayer Session Ended: the server is busy processing {}",
+                for_what
+            ),
+            data: None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -282,9 +297,9 @@ pub fn generate_mapping(mapping: Mapping) -> APIMapping {
 }
 
 #[get("/mapping")]
-pub async fn get_mapping(app_state: Data<AppState>) -> Json<APIResponse<APIMapping>> {
-    let mapping = app_state.mapping.lock().unwrap();
-    Json(APIResponse::ok(generate_mapping(mapping.clone())))
+pub async fn get_mapping(cache_manager: Data<CacheManager>) -> Json<APIResponse<APIMapping>> {
+    let mapping = cache_manager.get_mapping();
+    Json(APIResponse::ok(generate_mapping(mapping)))
 }
 
 #[get("/heartbeat")]

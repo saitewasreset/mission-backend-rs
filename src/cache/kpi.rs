@@ -1,14 +1,13 @@
-use crate::cache::mission::{MissionCachedInfo, MissionKPICachedInfo};
+use crate::cache::mission::{cache_write_redis, CacheTimeInfo, MissionCachedInfo, MissionKPICachedInfo};
 use crate::kpi::*;
-use crate::{
-    CORRECTION_ITEMS, KPI_CALCULATION_PLAYER_INDEX, NITRA_GAME_ID, TRANSFORM_KPI_COMPONENTS,
-};
-use diesel::PgConnection;
-use log::{debug, error, info};
-use redis::Commands;
+use crate::{CORRECTION_ITEMS, KPI_CALCULATION_PLAYER_INDEX, NITRA_GAME_ID, TRANSFORM_KPI_COMPONENTS};
+use diesel::{PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
+use std::time::Instant;
+use crate::cache::manager::{get_db_redis_conn, get_from_redis, CacheContext, CacheError, CacheGenerationError, Cacheable};
+use crate::db::models::{Character, MissionInvalid, Player};
+use crate::db::schema::{character, mission_invalid};
 
 // depends on:
 // - MissionCachedInfo
@@ -48,7 +47,7 @@ impl CachedGlobalKPIState {
         player_id_to_name: &HashMap<i16, String>,
         character_id_to_game_id: &HashMap<i16, String>,
         scout_special_player_set: &HashSet<String>,
-    ) -> (Self, Duration) {
+    ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
 
         let cached_mission_kpi_set = cached_mission_kpi_list
@@ -71,7 +70,7 @@ impl CachedGlobalKPIState {
                     standard_correction_sum: HashMap::new(),
                     transform_range: HashMap::new(),
                 },
-                begin.elapsed(),
+                CacheTimeInfo::from_duration_generate(begin.elapsed()),
             );
         }
 
@@ -457,42 +456,27 @@ impl CachedGlobalKPIState {
 
         let elapsed = begin.elapsed();
 
-        debug!("generated global kpi state in {:?}", elapsed);
-
-        (result, elapsed)
+        (result, CacheTimeInfo::from_duration_generate(elapsed))
     }
 
     pub fn from_redis_all(
         db_conn: &mut PgConnection,
         redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
         invalid_mission_id_list: &[i32],
-        kpi_config: KPIConfig,
+        kpi_config: &KPIConfig,
         player_id_to_name: &HashMap<i16, String>,
         character_id_to_game_id: &HashMap<i16, String>,
         scout_special_player_set: &HashSet<String>,
-    ) -> Result<Self, ()> {
+    ) -> Result<(Self, CacheTimeInfo), CacheError> {
         let begin = Instant::now();
-        let cached_mission_list = MissionCachedInfo::get_cached_all(
+        let cached_mission_list = MissionCachedInfo::try_get_cached_all(
             db_conn,
             redis_conn,
-            entity_blacklist_set,
-            entity_combine,
-            weapon_combine,
         )?;
 
-        let cached_mission_kpi_list = MissionKPICachedInfo::get_cached_all(
+        let cached_mission_kpi_list = MissionKPICachedInfo::try_get_cached_all(
             db_conn,
             redis_conn,
-            entity_blacklist_set,
-            entity_combine,
-            weapon_combine,
-            character_id_to_game_id,
-            player_id_to_name,
-            scout_special_player_set,
-            &kpi_config,
         )?;
 
         let load_from_redis_elapsed = begin.elapsed();
@@ -507,83 +491,94 @@ impl CachedGlobalKPIState {
             character_id_to_game_id,
             scout_special_player_set,
         )
-        .0;
+            .0;
 
         let generate_elapsed = begin.elapsed();
 
-        info!("generated global kpi state from redis in {:?}(total) = {:?}(load_from_redis) + {:?}(generate)", load_from_redis_elapsed + generate_elapsed, load_from_redis_elapsed, generate_elapsed);
-        Ok(generated)
+        Ok((generated, CacheTimeInfo {
+            count: 1,
+            load_from_db: Some(load_from_redis_elapsed),
+            generate: generate_elapsed,
+        }))
     }
 
-    pub fn get_cached(
-        db_conn: &mut PgConnection,
-        redis_conn: &mut redis::Connection,
-        entity_blacklist_set: &HashSet<String>,
-        entity_combine: &HashMap<String, String>,
-        weapon_combine: &HashMap<String, String>,
-        invalid_mission_id_list: &[i32],
-        kpi_config: &KPIConfig,
-        player_id_to_name: &HashMap<i16, String>,
-        character_id_to_game_id: &HashMap<i16, String>,
-        scout_special_player_set: &HashSet<String>,
-    ) -> Result<Self, ()> {
-        let cached_bytes: Option<Vec<u8>> = redis_conn.get("global_kpi_state").ok();
+    pub fn try_get_cached(redis_conn: &mut redis::Connection) -> Result<Self, CacheError> {
+        let redis_key = "global_kpi_state";
 
-        let cached_content = match cached_bytes {
-            Some(x) => {
-                let decoded: CachedGlobalKPIState = match rmp_serde::from_read(&x[..]) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        error!("cannot decode cached bytes: {}", e);
-                        return Err(());
-                    }
-                };
+        get_from_redis(redis_conn, redis_key)
+    }
+}
 
-                decoded
-            }
-            None => {
-                let cached_mission_list = MissionCachedInfo::get_cached_all(
-                    db_conn,
-                    redis_conn,
-                    entity_blacklist_set,
-                    entity_combine,
-                    weapon_combine,
-                )?;
+impl Cacheable for CachedGlobalKPIState {
+    fn name(&self) -> &str {
+        "global_kpi_state"
+    }
 
-                let cached_mission_kpi_list = MissionKPICachedInfo::get_cached_all(
-                    db_conn,
-                    redis_conn,
-                    entity_blacklist_set,
-                    entity_combine,
-                    weapon_combine,
-                    character_id_to_game_id,
-                    player_id_to_name,
-                    scout_special_player_set,
-                    &kpi_config,
-                )?;
+    fn generate_and_write(context: &CacheContext) -> Result<CacheTimeInfo, CacheGenerationError> {
+        let begin = Instant::now();
 
-                let generated = Self::generate(
-                    &cached_mission_list,
-                    &cached_mission_kpi_list,
-                    invalid_mission_id_list,
-                    kpi_config,
-                    player_id_to_name,
-                    character_id_to_game_id,
-                    scout_special_player_set,
-                )
-                .0;
+        let scout_special_player_set = &context.mapping.scout_special_player_set;
 
-                let serialized = rmp_serde::to_vec(&generated).unwrap();
-                match redis_conn.set("global_kpi_state", serialized) {
-                    Ok(()) => generated,
-                    Err(e) => {
-                        error!("cannot write data to redis: {}", e);
-                        return Err(());
-                    }
-                }
-            }
-        };
+        let kpi_config = context.kpi_config.as_ref().ok_or_else(|| {
+            CacheGenerationError::ConfigError("kpi config is not set".to_string())
+        })?;
 
-        Ok(cached_content)
+        let (mut db_conn, mut redis_conn) = get_db_redis_conn(&context.db_pool, &context.redis_client)?;
+
+        let character_list = character::table
+            .select(Character::as_select())
+            .load(&mut db_conn).map_err(|e| {
+            CacheGenerationError::InternalError(format!("cannot get character list from db: {}", e))
+        })?;
+
+        let character_id_to_game_id = character_list
+            .into_iter()
+            .map(|character| (character.id, character.character_game_id))
+            .collect::<HashMap<_, _>>();
+
+        let player_list = crate::db::schema::player::table
+            .select(Player::as_select())
+            .load(&mut db_conn).map_err(|e| {
+            CacheGenerationError::InternalError(format!("cannot get player list from db: {}", e))
+        })?;
+
+        let player_id_to_name = player_list
+            .into_iter()
+            .map(|player| (player.id, player.player_name))
+            .collect::<HashMap<_, _>>();
+
+        let invalid_mission_list = mission_invalid::table
+            .select(MissionInvalid::as_select())
+            .load(&mut db_conn).map_err(|e| {
+            CacheGenerationError::InternalError(format!("cannot get invalid mission list from db: {}", e))
+        })?;
+
+
+        let invalid_mission_id_list = invalid_mission_list
+            .into_iter()
+            .map(|x| x.mission_id)
+            .collect::<Vec<_>>();
+
+        let load_from_db_elapsed = begin.elapsed();
+
+        let (cache_result, mut time_info) = CachedGlobalKPIState::from_redis_all(
+            &mut db_conn,
+            &mut redis_conn,
+            &invalid_mission_id_list,
+            kpi_config,
+            &player_id_to_name,
+            &character_id_to_game_id,
+            &scout_special_player_set,
+        ).map_err(|e| {
+            CacheGenerationError::InternalError(format!("cannot generate global kpi state: {}", e))
+        })?;
+
+        cache_write_redis(&cache_result, "global_kpi_state", &mut redis_conn).map_err(CacheGenerationError::InternalError)?;
+
+        let _ = redis::cmd("SAVE").exec(&mut redis_conn);
+
+        time_info.add_load_from_db(load_from_db_elapsed);
+
+        Ok(time_info)
     }
 }
