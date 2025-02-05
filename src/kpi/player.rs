@@ -3,13 +3,10 @@ use crate::cache::mission::*;
 use crate::db::models::*;
 use crate::db::schema::*;
 use crate::kpi::KPIConfig;
-use crate::mission::mission::generate_mission_kpi;
-use crate::mission::MissionKPIInfo;
-use crate::{APIResponse, DbPool};
-use actix_web::{
-    get,
-    web::{self, Data, Json},
-};
+use crate::mission::mission::generate_mission_kpi_full;
+use crate::mission::MissionKPIInfoFull;
+use crate::{APIResponse, AppState, DbPool};
+use actix_web::{get, web::{self, Data, Json}, HttpRequest};
 use diesel::prelude::*;
 use log::error;
 use serde::Serialize;
@@ -91,7 +88,7 @@ pub fn generate_player_kpi(
                 mission_kpi_info.mission_id,
                 (
                     mission_kpi_info.mission_id,
-                    generate_mission_kpi(
+                    generate_mission_kpi_full(
                         &mission_kpi_info,
                         player_id_to_name,
                         global_kpi_state,
@@ -104,7 +101,7 @@ pub fn generate_player_kpi(
 
     let mut player_name_to_character_type_to_mission_list: HashMap<
         &String,
-        HashMap<&String, Vec<(i32, &MissionKPIInfo)>>,
+        HashMap<&String, Vec<(i32, &MissionKPIInfoFull)>>,
     > = HashMap::new();
 
     for (mission_id, mission_kpi_info_list) in mission_kpi_by_mission_id.values() {
@@ -186,7 +183,13 @@ async fn get_player_kpi(
     db_pool: Data<DbPool>,
     redis_client: Data<redis::Client>,
     cache_manager: Data<CacheManager>,
+    app_state: Data<AppState>,
+    request: HttpRequest,
 ) -> Json<APIResponse<HashMap<String, PlayerKPIInfo>>> {
+    if !app_state.check_access_token(&request) {
+        return Json(APIResponse::unauthorized());
+    }
+
     if let Some(kpi_config) = cache_manager.get_kpi_config() {
         let result = web::block(move || {
             let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)

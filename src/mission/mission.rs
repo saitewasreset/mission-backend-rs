@@ -1,22 +1,15 @@
 use std::collections::HashMap;
 
-use super::{
-    MissionDamageInfo, MissionGeneralData, MissionGeneralInfo, MissionGeneralPlayerInfo,
-    MissionKPIComponent, MissionKPIInfo, MissionResourceInfo, MissionWeaponDamageInfo,
-    PlayerDamageInfo, PlayerFriendlyFireInfo, PlayerResourceData,
-};
+use super::{MissionDamageInfo, MissionGeneralData, MissionGeneralInfo, MissionGeneralPlayerInfo, MissionKPIComponent, MissionKPIInfo, MissionKPIInfoFull, MissionResourceInfo, MissionWeaponDamageInfo, PlayerDamageInfo, PlayerFriendlyFireInfo, PlayerResourceData};
 use crate::cache::kpi::CachedGlobalKPIState;
 use crate::cache::mission::{MissionCachedInfo, MissionKPICachedInfo};
 use crate::db::models::*;
 use crate::kpi::{KPIComponent, KPIConfig};
-use crate::{CORRECTION_ITEMS, NITRA_GAME_ID};
+use crate::{AppState, CORRECTION_ITEMS, NITRA_GAME_ID};
 
 use crate::db::schema::*;
 use crate::{APIResponse, DbPool};
-use actix_web::{
-    get,
-    web::{self, Data, Json},
-};
+use actix_web::{get, web::{self, Data, Json}, HttpRequest};
 use diesel::prelude::*;
 use log::error;
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
@@ -369,12 +362,12 @@ fn generate_mission_resource(
     })
 }
 
-pub fn generate_mission_kpi(
+pub fn generate_mission_kpi_full(
     mission_kpi_cached_info: &MissionKPICachedInfo,
     player_id_to_name: &HashMap<i16, String>,
     global_kpi_state: &CachedGlobalKPIState,
     kpi_config: &KPIConfig,
-) -> Vec<MissionKPIInfo> {
+) -> Vec<MissionKPIInfoFull> {
     let mut result = Vec::with_capacity(mission_kpi_cached_info.raw_kpi_data.len());
 
     let mut mission_correction_factor_sum = HashMap::new();
@@ -516,7 +509,7 @@ pub fn generate_mission_kpi(
             a_index.cmp(&b_index)
         });
 
-        result.push(MissionKPIInfo {
+        result.push(MissionKPIInfoFull {
             player_name,
             kpi_character_type: kpi_character_type.to_string(),
             weighted_kill,
@@ -532,6 +525,8 @@ pub fn generate_mission_kpi(
             mission_kpi: player_mission_kpi_weighted_sum / player_mission_kpi_max_sum,
         });
     }
+
+    result.sort_unstable_by(|a, b| a.player_name.cmp(&b.player_name));
 
     result
 }
@@ -850,65 +845,23 @@ async fn get_mission_resource_info(
     }
 }
 
-#[get("/{mission_id}/kpi")]
-async fn get_mission_kpi(
+#[get("/{mission_id}/kpi_full")]
+async fn get_mission_kpi_full(
     db_pool: Data<DbPool>,
     path: web::Path<i32>,
     redis_client: Data<redis::Client>,
+    app_state: Data<AppState>,
     cache_manager: Data<CacheManager>,
-) -> Json<APIResponse<Vec<MissionKPIInfo>>> {
+    request: HttpRequest,
+) -> Json<APIResponse<Vec<MissionKPIInfoFull>>> {
+    if !app_state.check_access_token(&request) {
+        return Json(APIResponse::unauthorized());
+    }
+
     let mission_id = path.into_inner();
 
     if let Some(kpi_config) = cache_manager.get_kpi_config() {
-        let result = web::block(move || {
-            let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)
-                .map_err(|e| format!("cannot get connection: {}", e))?;
-
-
-            let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
-                .map_err(|e| format!("cannot get cached mission info: {}", e))?;
-
-            let mut found = false;
-
-            for mission in &cached_mission_list {
-                if mission.mission_info.id == mission_id {
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                return Ok(None);
-            }
-
-            let player_list = player::table
-                .select(Player::as_select())
-                .load(&mut db_conn)
-                .map_err(|e| format!("cannot get player list: {}", e))?;
-
-            let player_id_to_name = player_list
-                .into_iter()
-                .map(|player| (player.id, player.player_name))
-                .collect::<HashMap<_, _>>();
-
-            let global_kpi_state = CachedGlobalKPIState::try_get_cached(&mut redis_conn)
-                .map_err(|e| format!("cannot get global kpi state: {}", e))?;
-
-            let mission_kpi_cached_info = MissionKPICachedInfo::try_get_cached(&mut redis_conn, mission_id)
-                .map_err(|e| format!("cannot get mission kpi cached info: {}", e))?;
-
-            let result = generate_mission_kpi(
-                &mission_kpi_cached_info,
-                &player_id_to_name,
-                &global_kpi_state,
-                &kpi_config,
-            );
-
-
-            Ok::<_, String>(Some(result))
-        })
-            .await
-            .unwrap();
+        let result = get_mission_kpi_base(db_pool, redis_client, kpi_config, mission_id).await;
 
         match result {
             Ok(x) => match x {
@@ -923,4 +876,86 @@ async fn get_mission_kpi(
     } else {
         Json(APIResponse::config_required("kpi"))
     }
+}
+
+#[get("/{mission_id}/kpi")]
+async fn get_mission_kpi(
+    db_pool: Data<DbPool>,
+    path: web::Path<i32>,
+    redis_client: Data<redis::Client>,
+    cache_manager: Data<CacheManager>,
+) -> Json<APIResponse<Vec<MissionKPIInfo>>> {
+    let mission_id = path.into_inner();
+
+    if let Some(kpi_config) = cache_manager.get_kpi_config() {
+        let result = get_mission_kpi_base(db_pool, redis_client, kpi_config, mission_id).await;
+
+        match result {
+            Ok(x) => match x {
+                Some(info) => Json(APIResponse::ok(info.into_iter().map(|x| x.into()).collect())),
+                None => Json(APIResponse::not_found()),
+            },
+            Err(e) => {
+                error!("cannot get mission kpi info: {}", e);
+                Json(APIResponse::internal_error())
+            }
+        }
+    } else {
+        Json(APIResponse::config_required("kpi"))
+    }
+}
+
+async fn get_mission_kpi_base(db_pool: Data<DbPool>,
+                              redis_client: Data<redis::Client>,
+                              kpi_config: KPIConfig,
+                              mission_id: i32, ) -> Result<Option<Vec<MissionKPIInfoFull>>, String> {
+    web::block(move || {
+        let (mut db_conn, mut redis_conn) = get_db_redis_conn(&db_pool, &redis_client)
+            .map_err(|e| format!("cannot get connection: {}", e))?;
+
+
+        let cached_mission_list = MissionCachedInfo::try_get_cached_all(&mut db_conn, &mut redis_conn)
+            .map_err(|e| format!("cannot get cached mission info: {}", e))?;
+
+        let mut found = false;
+
+        for mission in &cached_mission_list {
+            if mission.mission_info.id == mission_id {
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return Ok(None);
+        }
+
+        let player_list = player::table
+            .select(Player::as_select())
+            .load(&mut db_conn)
+            .map_err(|e| format!("cannot get player list: {}", e))?;
+
+        let player_id_to_name = player_list
+            .into_iter()
+            .map(|player| (player.id, player.player_name))
+            .collect::<HashMap<_, _>>();
+
+        let global_kpi_state = CachedGlobalKPIState::try_get_cached(&mut redis_conn)
+            .map_err(|e| format!("cannot get global kpi state: {}", e))?;
+
+        let mission_kpi_cached_info = MissionKPICachedInfo::try_get_cached(&mut redis_conn, mission_id)
+            .map_err(|e| format!("cannot get mission kpi cached info: {}", e))?;
+
+        let result = generate_mission_kpi_full(
+            &mission_kpi_cached_info,
+            &player_id_to_name,
+            &global_kpi_state,
+            &kpi_config,
+        );
+
+
+        Ok::<_, String>(Some(result))
+    })
+        .await
+        .unwrap()
 }

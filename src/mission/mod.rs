@@ -199,6 +199,35 @@ pub struct MissionKPIInfo {
     pub player_name: String,
     #[serde(rename = "kpiCharacterType")]
     pub kpi_character_type: String,
+    #[serde(rename = "reviveNum")]
+    pub revive_num: f64,
+    #[serde(rename = "deathNum")]
+    pub death_num: f64,
+    #[serde(rename = "friendlyFire")]
+    pub friendly_fire: f64,
+    #[serde(rename = "supplyCount")]
+    pub supply_count: f64,
+}
+
+impl From<MissionKPIInfoFull> for MissionKPIInfo {
+    fn from(value: MissionKPIInfoFull) -> Self {
+        MissionKPIInfo {
+            player_name: value.player_name,
+            kpi_character_type: value.kpi_character_type,
+            revive_num: value.revive_num,
+            death_num: value.death_num,
+            friendly_fire: value.friendly_fire,
+            supply_count: value.supply_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct MissionKPIInfoFull {
+    #[serde(rename = "playerName")]
+    pub player_name: String,
+    #[serde(rename = "kpiCharacterType")]
+    pub kpi_character_type: String,
     #[serde(rename = "weightedKill")]
     pub weighted_kill: f64,
     #[serde(rename = "weightedDamage")]
@@ -233,4 +262,5 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(mission::get_mission_resource_info);
     cfg.service(mission::get_player_character);
     cfg.service(mission::get_mission_kpi);
+    cfg.service(mission::get_mission_kpi_full);
 }
