@@ -81,7 +81,7 @@ impl TryFrom<&str> for LogMissionInfo {
     // NOTE: Work around for BUG in Mission Monitor MOD:
     // 在MOD中，对于深潜，每阶段结束时产生的日志中，任务时间将为已完成阶段之和，需要手动根据本局玩家的加入时间进行修正。
 
-    /// NOTE: `value` must be full file cotent of log, not mission info part
+    /// NOTE: `value` must be full file content of log, not mission info part
     /// (workaround for a BUG in Mission Monitor MOD).
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let file_part_list = value.split("______").collect::<Vec<&str>>();
@@ -113,7 +113,7 @@ impl TryFrom<&str> for LogMissionInfo {
                 .map_err(|e| format!("cannot parse player join time: {}", e))?;
 
             // We save player escaped count as workaround for a bug in Mission Monitor Mod.
-            // See notes at calcuation of mission result below for detail.
+            // See notes at calculation of mission result below for detail.
             let player_escaped = player_info_split_row[14] == "1";
             if player_escaped {
                 player_escaped_count += 1;
@@ -155,7 +155,7 @@ impl TryFrom<&str> for LogMissionInfo {
         let mission_aborted = mission_info_split_row[4] == "2";
 
         // Due to a bug in game API, we cannot check whether mission is completed or failed directly
-        // Instead, we check if there exists sucessfully escaped player
+        // Instead, we check if there exists successfully escaped player
 
         let result: i16 = match mission_aborted {
             true => 2,
@@ -339,6 +339,7 @@ fn fix_player_info_split_row(mut split_row: Vec<&str>) -> Result<Vec<&str>, Stri
 impl TryFrom<&str> for LogDamageInfo {
     type Error = String;
 
+    //noinspection SpellCheckingInspection
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let damage_split_row = value.trim().split('|').collect::<Vec<&str>>();
 

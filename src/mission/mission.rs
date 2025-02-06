@@ -471,8 +471,8 @@ pub fn generate_mission_kpi_full(
 
                     let transform_range = range_info[range_index];
 
-                    corrected_index * transform_range.transform_cofficient.0
-                        + transform_range.transform_cofficient.1
+                    corrected_index * transform_range.transform_coefficient.0
+                        + transform_range.transform_coefficient.1
                 }
                 None => corrected_index,
             };

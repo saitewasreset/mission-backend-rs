@@ -325,7 +325,7 @@ fn generate(
         total: total_damage / valid_game_count as f64,
     };
 
-    let total_avergae_death_num_per_player = cached_mission_list
+    let total_average_death_num_per_player = cached_mission_list
         .iter()
         .map(|item| &item.player_info)
         .map(|player_info_list| {
@@ -364,10 +364,10 @@ fn generate(
     let average_death_num_per_player = DeltaData {
         prev: prev_average_death_num_per_player / prev_count as f64,
         recent: match recent_mission_list.len() {
-            0 => total_avergae_death_num_per_player / valid_game_count as f64,
+            0 => total_average_death_num_per_player / valid_game_count as f64,
             _ => recent_average_death_num_per_player / recent_mission_list.len() as f64,
         },
-        total: total_avergae_death_num_per_player / valid_game_count as f64,
+        total: total_average_death_num_per_player / valid_game_count as f64,
     };
 
     let total_minerals_mined = cached_mission_list

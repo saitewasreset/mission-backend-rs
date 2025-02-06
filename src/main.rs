@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
     let access_token = read_file_env("ACCESS_TOKEN");
 
     if access_token.is_none() {
-        warn!("cannot get access token, any token would be accepted, check ACCESS_TOKEN_FILE or ACCESS_TOKEN enviroment variable");
+        warn!("cannot get access token, any token would be accepted, check ACCESS_TOKEN_FILE or ACCESS_TOKEN environment variable");
     }
 
     let instance_dir = read_file_env("INSTANCE_DIR");

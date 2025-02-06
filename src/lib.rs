@@ -230,7 +230,7 @@ impl<T: Serialize> APIResponse<T> {
     pub fn internal_error() -> Self {
         APIResponse {
             code: 500,
-            message: "Multiplayer Session Ended: an internal server error has occured".to_string(),
+            message: "Multiplayer Session Ended: an internal server error has occurred".to_string(),
             data: None,
         }
     }

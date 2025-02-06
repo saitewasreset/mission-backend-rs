@@ -28,14 +28,8 @@ pub async fn load_mission(
     app_state: Data<AppState>,
     db_pool: Data<DbPool>,
 ) -> Json<APIResponse<LoadResult>> {
-    if let Some(access_token) = app_state.access_token.clone() {
-        if let Some(provieded_access_token) = requests.cookie("access_token") {
-            if provieded_access_token.value() != access_token {
-                return Json(APIResponse::unauthorized());
-            }
-        } else {
-            return Json(APIResponse::unauthorized());
-        }
+    if !app_state.check_access_token(&requests) {
+        return Json(APIResponse::unauthorized());
     }
 
     let decode_result = web::block(|| decompress_zstd_payload(raw_body))
@@ -157,21 +151,21 @@ fn mark_invalid_mission(db_pool: Data<DbPool>) -> Result<(), ()> {
         .map(|(player_info_list, mission)| ((mission.id, mission.mission_time), player_info_list))
         .collect::<HashMap<_, _>>();
 
-    let mut inavlid_mission_id_to_reason: HashMap<i32, &str> = HashMap::new();
+    let mut invalid_mission_id_to_reason: HashMap<i32, &str> = HashMap::new();
 
     for ((mission_id, mission_time), player_list) in player_info_by_mission {
         if mission_time < INVALID_MISSION_TIME_THRESHOLD {
-            inavlid_mission_id_to_reason.insert(mission_id, "任务时间过短");
+            invalid_mission_id_to_reason.insert(mission_id, "任务时间过短");
             continue;
         }
 
         if player_list.len() <= 1 {
-            inavlid_mission_id_to_reason.insert(mission_id, "单人游戏");
+            invalid_mission_id_to_reason.insert(mission_id, "单人游戏");
             continue;
         }
     }
 
-    for (mission_id, reason) in inavlid_mission_id_to_reason {
+    for (mission_id, reason) in invalid_mission_id_to_reason {
         if let Err(e) = diesel::insert_into(mission_invalid::table)
             .values((
                 mission_invalid::mission_id.eq(mission_id),
