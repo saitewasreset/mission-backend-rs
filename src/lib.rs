@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::path::PathBuf;
 use log::error;
+use phf::{Map, phf_map};
 use crate::cache::manager::CacheManager;
 
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
@@ -49,63 +50,59 @@ pub const TRANSFORM_KPI_COMPONENTS: &[KPIComponent] = &[
     KPIComponent::Minerals,
 ];
 
-pub const WEAPON_TYPE: LazyCell<HashMap<&str, i16>> = LazyCell::new(|| {
-    HashMap::from([
-        ("WPN_FlameThrower", 0),
-        ("WPN_Cryospray", 0),
-        ("WPN_GooCannon", 0),
-        ("WPN_Pistol_A", 1),
-        ("WPN_ChargeBlaster", 1),
-        ("WPN_MicrowaveGun", 1),
-        ("WPN_CombatShotgun", 0),
-        ("WPN_SMG_OneHand", 0),
-        ("WPN_LockOnRifle", 0),
-        ("WPN_GrenadeLauncher", 1),
-        ("WPN_LineCutter", 1),
-        ("WPN_HeavyParticleCannon", 1),
-        ("WPN_Gatling", 0),
-        ("WPN_Autocannon", 0),
-        ("WPN_MicroMissileLauncher", 0),
-        ("WPN_Revolver", 1),
-        ("WPN_BurstPistol", 1),
-        ("WPN_CoilGun", 1),
-        ("WPN_AssaultRifle", 0),
-        ("WPN_M1000", 0),
-        ("WPN_PlasmaCarbine", 0),
-        ("WPN_SawedOffShotgun", 1),
-        ("WPN_DualMPs", 1),
-        ("WPN_Crossbow", 1),
-    ])
-});
+pub static WEAPON_TYPE: Map<&'static str, i16> = phf_map! {
+    "WPN_FlameThrower" => 0,
+    "WPN_Cryospray" => 0,
+    "WPN_GooCannon" => 0,
+    "WPN_Pistol_A" => 1,
+    "WPN_ChargeBlaster" => 1,
+    "WPN_MicrowaveGun" => 1,
+    "WPN_CombatShotgun" => 0,
+    "WPN_SMG_OneHand" => 0,
+    "WPN_LockOnRifle" => 0,
+    "WPN_GrenadeLauncher" => 1,
+    "WPN_LineCutter" => 1,
+    "WPN_HeavyParticleCannon" => 1,
+    "WPN_Gatling" => 0,
+    "WPN_Autocannon" => 0,
+    "WPN_MicroMissileLauncher" => 0,
+    "WPN_Revolver" => 1,
+    "WPN_BurstPistol" => 1,
+    "WPN_CoilGun" => 1,
+    "WPN_AssaultRifle" => 0,
+    "WPN_M1000" => 0,
+    "WPN_PlasmaCarbine" => 0,
+    "WPN_SawedOffShotgun" => 1,
+    "WPN_DualMPs" => 1,
+    "WPN_Crossbow" => 1,
+};
 
-pub const WEAPON_ORDER: LazyCell<HashMap<&str, i16>> = LazyCell::new(|| {
-    HashMap::from([
-        ("WPN_FlameThrower", 0),
-        ("WPN_Cryospray", 1),
-        ("WPN_GooCannon", 2),
-        ("WPN_Pistol_A", 3),
-        ("WPN_ChargeBlaster", 4),
-        ("WPN_MicrowaveGun", 5),
-        ("WPN_CombatShotgun", 6),
-        ("WPN_SMG_OneHand", 7),
-        ("WPN_LockOnRifle", 8),
-        ("WPN_GrenadeLauncher", 9),
-        ("WPN_LineCutter", 10),
-        ("WPN_HeavyParticleCannon", 11),
-        ("WPN_Gatling", 12),
-        ("WPN_Autocannon", 13),
-        ("WPN_MicroMissileLauncher", 14),
-        ("WPN_Revolver", 15),
-        ("WPN_BurstPistol", 16),
-        ("WPN_CoilGun", 17),
-        ("WPN_AssaultRifle", 18),
-        ("WPN_M1000", 19),
-        ("WPN_PlasmaCarbine", 20),
-        ("WPN_SawedOffShotgun", 21),
-        ("WPN_DualMPs", 22),
-        ("WPN_Crossbow", 23),
-    ])
-});
+pub static WEAPON_ORDER: Map<&'static str, i16> = phf_map! {
+    "WPN_FlameThrower" => 0,
+    "WPN_Cryospray" => 1,
+    "WPN_GooCannon" => 2,
+    "WPN_Pistol_A" => 3,
+    "WPN_ChargeBlaster" => 4,
+    "WPN_MicrowaveGun" => 5,
+    "WPN_CombatShotgun" => 6,
+    "WPN_SMG_OneHand" => 7,
+    "WPN_LockOnRifle" => 8,
+    "WPN_GrenadeLauncher" => 9,
+    "WPN_LineCutter" => 10,
+    "WPN_HeavyParticleCannon" => 11,
+    "WPN_Gatling" => 12,
+    "WPN_Autocannon" => 13,
+    "WPN_MicroMissileLauncher" => 14,
+    "WPN_Revolver" => 15,
+    "WPN_BurstPistol" => 16,
+    "WPN_CoilGun" => 17,
+    "WPN_AssaultRifle" => 18,
+    "WPN_M1000" => 19,
+    "WPN_PlasmaCarbine" => 20,
+    "WPN_SawedOffShotgun" => 21,
+    "WPN_DualMPs" => 22,
+    "WPN_Crossbow" => 23,
+};
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Mapping {
