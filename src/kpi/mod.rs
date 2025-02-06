@@ -79,7 +79,7 @@ pub struct KPIComponentData {
     pub source_index: f64,
     pub weighted_index: f64,
     pub weighted_rank: f64,
-    pub transform_cofficient: (f64, f64),
+    pub transform_coefficient: (f64, f64),
     pub transformed_value: f64,
 }
 
@@ -200,8 +200,8 @@ pub struct IndexTransformRange {
     #[serde(rename = "transformRange")]
     pub transform_range: (f64, f64),
     // y = ax + b
-    #[serde(rename = "transformCofficient")]
-    pub transform_cofficient: (f64, f64),
+    #[serde(rename = "transformCoefficient")]
+    pub transform_coefficient: (f64, f64),
     #[serde(rename = "playerCount")]
     pub player_count: i32,
 }

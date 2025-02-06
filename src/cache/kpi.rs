@@ -431,7 +431,7 @@ impl CachedGlobalKPIState {
                         rank_range: range_config.rank_range,
                         source_range: (source_min, source_max),
                         transform_range: range_config.transform_range,
-                        transform_cofficient: (a, b),
+                        transform_coefficient: (a, b),
                         player_count: (source_list_end_index - source_list_begin_index) as i32,
                     };
 
