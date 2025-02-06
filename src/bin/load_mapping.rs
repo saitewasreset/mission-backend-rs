@@ -85,13 +85,13 @@ fn main() {
     let entity_blacklist = entity_black_list_file_content
         .lines()
         .filter(|&x| !x.trim().starts_with('#'))
-        .map(|x| String::from(x))
+        .map(String::from)
         .collect::<Vec<String>>();
 
     let scout_special_list = scout_special_list_file_content
         .lines()
         .filter(|&x| !x.trim().starts_with('#'))
-        .map(|x| String::from(x))
+        .map(String::from)
         .collect::<Vec<String>>();
     let character_mapping = parse_mapping_file(&mapping_path.join("character.txt"));
     let entity_mapping = parse_mapping_file(&mapping_path.join("entity.txt"));
@@ -106,7 +106,7 @@ fn main() {
         character_mapping,
         entity_mapping,
         entity_combine,
-        entity_blacklist_set: HashSet::from_iter(entity_blacklist.into_iter()),
+        entity_blacklist_set: HashSet::from_iter(entity_blacklist),
         mission_type_mapping,
         resource_mapping,
         weapon_mapping,
@@ -131,7 +131,7 @@ fn main() {
     println!("upload url: {}", upload_endpoint);
 
     cookie_jar.add_cookie_str(
-        &format!("access_token = {};", access_token).as_str(),
+        format!("access_token = {};", access_token).as_str(),
         &upload_endpoint
             .parse::<Url>()
             .expect("failed parsing load mapping url"),

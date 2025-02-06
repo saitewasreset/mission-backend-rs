@@ -146,7 +146,7 @@ pub fn generate(
     let mut mission_list = Vec::with_capacity(cached_mission_list.len());
 
     let invalid_mission_id_map = invalid_mission_list
-        .into_iter()
+        .iter()
         .map(|item| (item.mission_id, item))
         .collect::<HashMap<_, _>>();
 

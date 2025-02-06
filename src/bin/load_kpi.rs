@@ -111,7 +111,7 @@ fn main() -> Result<(), String> {
     println!("upload endpoint: {}", upload_endpoint);
 
     cookie_jar.add_cookie_str(
-        &format!("access_token = {};", access_token).as_str(),
+        format!("access_token = {};", access_token).as_str(),
         &upload_endpoint
             .parse::<Url>()
             .expect("failed parsing load kpi url"),
@@ -198,12 +198,16 @@ fn load_character_component_weight(
 }
 
 // Return: (character_weight_table, priority_table)
+
+type CharacterDamageWeightTable = HashMap<CharacterKPIType, HashMap<String, f64>>;
+type PriorityTable = HashMap<String, f64>;
+
 fn load_damage_weight_table(
     file_path: &Path,
 ) -> Result<
     (
-        HashMap<CharacterKPIType, HashMap<String, f64>>,
-        HashMap<String, f64>,
+        CharacterDamageWeightTable,
+        PriorityTable,
     ),
     Box<dyn Error>,
 > {

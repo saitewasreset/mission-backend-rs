@@ -552,9 +552,9 @@ impl MissionCachedInfo {
                     damage_info_by_mission.get(&mission.id).unwrap(),
                     resource_info_by_mission.get(&mission.id).unwrap(),
                     supply_info_by_mission.get(&mission.id).unwrap(),
-                    &entity_blacklist_set,
-                    &entity_combine,
-                    &weapon_combine,
+                    entity_blacklist_set,
+                    entity_combine,
+                    weapon_combine,
                     &id_to_player_name,
                     &id_to_entity_game_id,
                     &id_to_weapon_game_id,
@@ -712,15 +712,15 @@ impl MissionKPICachedInfo {
         let mut total_kill_map = HashMap::new();
         let mut total_resource_map = HashMap::new();
 
-        for (taker_id, value) in damage_map.values().map(|v| v.iter()).flatten() {
+        for (taker_id, value) in damage_map.values().flat_map(|v| v.iter()) {
             *total_damage_map.entry(taker_id.clone()).or_insert(0.0) += *value;
         }
 
-        for (killer_id, value) in kill_map.values().map(|v| v.iter()).flatten() {
+        for (killer_id, value) in kill_map.values().flat_map(|v| v.iter()) {
             *total_kill_map.entry(killer_id.clone()).or_insert(0.0) += *value;
         }
 
-        for (resource_id, value) in resource_map.values().map(|v| v.iter()).flatten() {
+        for (resource_id, value) in resource_map.values().flat_map(|v| v.iter()) {
             *total_resource_map.entry(resource_id.clone()).or_insert(0.0) += *value;
         }
 
@@ -743,8 +743,8 @@ impl MissionKPICachedInfo {
 
         let total_supply_count = mission_info
             .supply_info
-            .iter()
-            .map(|(_, supply_list)| supply_list.len())
+            .values()
+            .map(|supply_list| supply_list.len())
             .sum::<usize>() as f64;
 
         let mut raw_kpi_data = HashMap::new();
@@ -1045,7 +1045,7 @@ impl MissionKPICachedInfo {
 
         for mission_info in &mission_list {
             let generated = Self::generate(
-                &mission_info,
+                mission_info,
                 character_id_to_game_id,
                 player_id_to_name,
                 scout_special_player_set,

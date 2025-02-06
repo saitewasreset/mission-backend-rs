@@ -75,7 +75,7 @@ fn main() {
         .expect("failed parsing endpoint url");
 
     cookie_jar.add_cookie_str(
-        &format!("access_token = {};", access_token).as_str(),
+        format!("access_token = {};", access_token).as_str(),
         &upload_url,
     );
 
@@ -182,7 +182,7 @@ fn compress(data: &[u8]) -> Vec<u8> {
 
     let mut encoder = zstd::Encoder::new(compressed, 15).unwrap();
 
-    encoder.write_all(&data).unwrap();
+    encoder.write_all(data).unwrap();
     let mut compressed = encoder.finish().unwrap();
 
     let finish = time::Instant::now();
@@ -362,7 +362,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut player_info: Vec<LogPlayerInfo> = Vec::new();
 
     for player_info_line in player_info_part.lines() {
-        if player_info_line.trim().len() == 0 {
+        if player_info_line.trim().is_empty() {
             continue;
         }
         player_info.push(
@@ -377,7 +377,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut damage_info: Vec<LogDamageInfo> = Vec::new();
 
     for damage_info_line in damage_info_part.lines() {
-        if damage_info_line.trim().len() == 0 {
+        if damage_info_line.trim().is_empty() {
             continue;
         }
         damage_info.push(
@@ -438,7 +438,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut kill_info: Vec<LogKillInfo> = Vec::new();
 
     for kill_info_line in kill_info_part.lines() {
-        if kill_info_line.trim().len() == 0 {
+        if kill_info_line.trim().is_empty() {
             continue;
         }
         kill_info.push(
@@ -453,7 +453,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut resource_info: Vec<LogResourceInfo> = Vec::new();
 
     for resource_info_line in resource_info_part.lines() {
-        if resource_info_line.trim().len() == 0 {
+        if resource_info_line.trim().is_empty() {
             continue;
         }
         resource_info.push(
@@ -467,7 +467,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut supply_info: Vec<LogSupplyInfo> = Vec::new();
 
     for supply_info_line in supply_info_part.lines() {
-        if supply_info_line.trim().len() == 0 {
+        if supply_info_line.trim().is_empty() {
             continue;
         }
         supply_info.push(

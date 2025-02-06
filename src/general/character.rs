@@ -116,7 +116,7 @@ fn generate(
         .collect::<HashSet<_>>();
 
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|info| !invalid_mission_id_set.contains(&info.mission_info.id))
         .collect::<Vec<_>>();
 
@@ -135,32 +135,32 @@ fn generate(
 
             player_index_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(
                     mission
                         .player_index
                         .get(&player_info.player_id)
-                        .map(|x| *x)
+                        .copied()
                         .unwrap_or(0.0),
                 );
             revive_num_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(player_info.revive_num as i32);
             death_num_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(player_info.death_num as i32);
             minerals_mined_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(match mission.resource_info.get(&player_info.player_id) {
                     Some(x) => x.values().sum::<f64>(),
                     None => 0.0,
                 });
             supply_count_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(match mission.supply_info.get(&player_info.player_id) {
                     Some(x) => x.len() as i32,
                     None => 0,
@@ -176,7 +176,7 @@ fn generate(
 
             supply_efficiency_list_by_character
                 .entry(character_game_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .extend(player_supply_efficiency_list);
         }
     }
@@ -231,7 +231,7 @@ fn generate_choice_info(
         .copied()
         .collect::<HashSet<_>>();
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|info| !invalid_mission_id_set.contains(&info.mission_info.id))
         .collect::<Vec<_>>();
 

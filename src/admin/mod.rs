@@ -184,26 +184,23 @@ async fn api_delete_mission(
     };
 
     let result = web::block(move || {
-        let mut conn = match db_pool.get() {
-            Ok(x) => x,
-            Err(e) => {
-                error!("cannot get db connection from pool: {}", e);
-                return Err(());
-            }
-        };
+        let mut conn = db_pool.get().map_err(|e| format!("cannot get db connection from pool: {}", e))?;
 
         for mission_id in to_delete_mission_list {
             delete_mission::delete_mission(&mut conn, mission_id)?;
         }
 
-        Ok(())
+        Ok::<_, String>(())
     })
         .await
         .unwrap();
 
     match result {
         Ok(()) => Json(APIResponse::ok(())),
-        Err(()) => Json(APIResponse::internal_error()),
+        Err(e) => {
+            error!("cannot delete mission: {}", e);
+            Json(APIResponse::internal_error())
+        }
     }
 }
 

@@ -42,21 +42,19 @@ fn update_specific_cache(
         Ok(response) => match response.status() {
             StatusCode::OK => {
                 let body = response.bytes().expect("failed fetching response body");
-                let api_response =
-                    match serde_json::from_reader::<_, APIResponse<()>>(body.reader()) {
-                        Ok(x) => {
-                            if x.code == 200 {
-                                ()
-                            } else {
-                                return Err(format!(
-                                    "failed updating cache {}: {} {}",
-                                    cache_type, x.code, x.message
-                                ));
-                            }
+                match serde_json::from_reader::<_, APIResponse<()>>(body.reader()) {
+                    Ok(x) => {
+                        if x.code != 200 {
+                            Err(format!(
+                                "failed updating cache {}: {} {}",
+                                cache_type, x.code, x.message
+                            ))
+                        } else {
+                            Ok(())
                         }
-                        Err(e) => return Err(format!("failed parsing response body {}", e)),
-                    };
-                Ok(api_response)
+                    }
+                    Err(e) => Err(format!("failed parsing response body {}", e)),
+                }
             }
             _ => Err(format!(
                 "failed fetching cache update response with status code {}",

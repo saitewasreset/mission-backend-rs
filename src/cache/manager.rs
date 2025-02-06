@@ -181,7 +181,7 @@ impl CacheManager {
         let cache_type_list = [CacheType::MissionRaw, CacheType::MissionKPIRaw, CacheType::GlobalKPIState];
 
         for cache_type in cache_type_list {
-            if self.try_schedule(cache_type)? == false {
+            if !self.try_schedule(cache_type)? {
                 return Ok(false);
             }
         }

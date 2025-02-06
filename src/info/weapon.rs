@@ -120,7 +120,7 @@ fn generate(
                 WEAPON_ORDER
                     .get(a_weapon_game_id.as_str())
                     .unwrap_or(&0)
-                    .cmp(&WEAPON_ORDER.get(b_weapon_game_id.as_str()).unwrap_or(&0))
+                    .cmp(WEAPON_ORDER.get(b_weapon_game_id.as_str()).unwrap_or(&0))
             })
         });
 

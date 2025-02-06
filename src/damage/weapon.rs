@@ -8,7 +8,6 @@ use actix_web::{
     web::{Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
@@ -61,7 +60,7 @@ fn generate(
         .collect::<HashSet<_>>();
 
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|item| !invalid_mission_id_set.contains(&item.mission_info.id))
         .collect::<Vec<_>>();
 
@@ -85,12 +84,12 @@ fn generate(
 
             let hero_game_id = weapon_game_id_to_character_game_id
                 .get(weapon_game_id)
-                .map(|inner| inner.clone())
+                .cloned()
                 .unwrap_or(String::from("Unknown"));
 
             let mapped_name = weapon_mapping
                 .get(weapon_game_id)
-                .map(|inner| inner.clone())
+                .cloned()
                 .unwrap_or(weapon_game_id.clone());
 
             let entry = result.entry(weapon_game_id).or_insert(WeaponDamageInfo {

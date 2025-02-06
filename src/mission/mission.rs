@@ -107,8 +107,7 @@ fn generate_mission_general(
     let total_damage = target_mission
         .damage_info
         .values()
-        .map(|player_damage_data| player_damage_data.values())
-        .flatten()
+        .flat_map(|player_damage_data| player_damage_data.values())
         .filter(|pack| pack.taker_type != 1)
         .map(|pack| pack.total_amount)
         .sum::<f64>();
@@ -116,24 +115,21 @@ fn generate_mission_general(
     let total_kill = target_mission
         .kill_info
         .values()
-        .map(|player_kill_map| player_kill_map.values())
-        .flatten()
+        .flat_map(|player_kill_map| player_kill_map.values())
         .map(|pack| pack.total_amount)
         .sum::<i32>();
 
     let total_nitra = target_mission
         .resource_info
         .values()
-        .map(|player_data| player_data.get(NITRA_GAME_ID))
-        .flatten()
+        .filter_map(|player_data| player_data.get(NITRA_GAME_ID))
         .copied()
         .sum::<f64>();
 
     let total_minerals = target_mission
         .resource_info
         .values()
-        .map(|player_data| player_data.values())
-        .flatten()
+        .flat_map(|player_data| player_data.values())
         .sum::<f64>();
 
     let total_supply_count = target_mission
@@ -191,12 +187,12 @@ fn generate_mission_damage(
 
             ff_causer_taker_map
                 .entry(causer_player_name)
-                .or_insert_with(HashMap::new)
+                .or_default()
                 .insert(taker_game_id, pack.total_amount);
 
             ff_taker_causer_map
                 .entry(taker_game_id)
-                .or_insert_with(HashMap::new)
+                .or_default()
                 .insert(causer_player_name, pack.total_amount);
         }
     }
@@ -209,8 +205,7 @@ fn generate_mission_damage(
             .damage_info
             .get(&player_id)
             .iter()
-            .map(|x| x.iter())
-            .flatten()
+            .flat_map(|x| x.iter())
             .filter(|(_, pack)| pack.taker_type != 1)
             .map(|(k, v)| (k.clone(), v.total_amount))
             .collect::<HashMap<_, _>>();
@@ -219,8 +214,7 @@ fn generate_mission_damage(
             .kill_info
             .get(&player_id)
             .iter()
-            .map(|x| x.iter())
-            .flatten()
+            .flat_map(|x| x.iter())
             .map(|(k, v)| (k.clone(), v.total_amount))
             .collect::<HashMap<_, _>>();
 
@@ -229,20 +223,20 @@ fn generate_mission_damage(
                 .get(player_name)
                 .map(|ff_map| {
                     ff_map
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| ((*k).clone(), *v))
                         .collect()
                 })
-                .unwrap_or_else(HashMap::new),
+                .unwrap_or_default(),
             take: ff_taker_causer_map
                 .get(player_name)
                 .map(|ff_map| {
                     ff_map
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| ((*k).clone(), *v))
                         .collect()
                 })
-                .unwrap_or_else(HashMap::new),
+                .unwrap_or_default(),
         };
 
         let supply_count = target_mission
@@ -297,7 +291,7 @@ fn generate_mission_weapon_damage(
 
         let character_game_id = weapon_game_id_to_character_game_id
             .get(weapon_game_id)
-            .map(|inner| inner.clone())
+            .cloned()
             .unwrap_or("Unknown".into());
 
         let mapped_name = weapon_game_id_to_name
@@ -337,14 +331,14 @@ fn generate_mission_resource(
         let resource_data = target_mission
             .resource_info
             .get(&player_id)
-            .map(|player_resource_data| player_resource_data.clone())
-            .unwrap_or_else(HashMap::new);
+            .cloned()
+            .unwrap_or_default();
 
         let supply_data = target_mission
             .supply_info
             .get(&player_id)
-            .map(|supply_list| supply_list.clone())
-            .unwrap_or_else(Vec::new);
+            .cloned()
+            .unwrap_or_default();
 
         resource_info_by_player.insert(
             player_name.clone(),
@@ -397,11 +391,11 @@ pub fn generate_mission_kpi_full(
     }
 
     for (player_id, raw_kpi_data) in &mission_kpi_cached_info.raw_kpi_data {
-        let player_name = player_id_to_name.get(&player_id).unwrap().clone();
+        let player_name = player_id_to_name.get(player_id).unwrap().clone();
 
         let kpi_character_type = mission_kpi_cached_info
             .player_id_to_kpi_character
-            .get(&player_id)
+            .get(player_id)
             .unwrap();
 
         let weighted_kill = raw_kpi_data
@@ -453,7 +447,7 @@ pub fn generate_mission_kpi_full(
 
             component_name_to_component.insert(component_name.clone(), kpi_component);
 
-            let corrected_index = match mission_correction_factor.get(&kpi_component) {
+            let corrected_index = match mission_correction_factor.get(kpi_component) {
                 Some(factor) => (kpi_data.raw_index * factor).min(1.0),
                 None => kpi_data.raw_index,
             };
@@ -462,13 +456,13 @@ pub fn generate_mission_kpi_full(
                 .transform_range
                 .get(kpi_character_type)
                 .unwrap()
-                .get(&kpi_component)
+                .get(kpi_component)
             {
                 Some(range_info) => {
                     let mut range_index = 0;
 
-                    for i in 0..range_info.len() {
-                        if corrected_index > range_info[i].source_range.0 {
+                    for (i, transform_range) in range_info.iter().enumerate() {
+                        if corrected_index > transform_range.source_range.0 {
                             range_index = i;
                         } else {
                             break;
@@ -484,7 +478,7 @@ pub fn generate_mission_kpi_full(
             };
 
             let current_weight =
-                kpi_config.character_component_weight[kpi_character_type][&kpi_component];
+                kpi_config.character_component_weight[kpi_character_type][kpi_component];
 
             player_kpi_component_list.push(MissionKPIComponent {
                 name: component_name,

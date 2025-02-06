@@ -95,7 +95,7 @@ fn generate(
         .collect::<HashSet<_>>();
 
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|item| !invalid_mission_id_set.contains(&item.mission_info.id))
         .collect::<Vec<_>>();
 
@@ -108,7 +108,7 @@ fn generate(
             }
             mission_list_by_player
                 .entry(player_info.player_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(mission);
         }
     }
@@ -198,8 +198,7 @@ fn generate_for_player(
 
     let supply_efficiency_list: Vec<f64> = player_mission_list
         .iter()
-        .map(|item| item.supply_info.get(&player_id).into_iter().flatten())
-        .flatten()
+        .flat_map(|item| item.supply_info.get(&player_id).into_iter().flatten())
         .map(|x| x.ammo)
         .collect();
 

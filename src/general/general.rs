@@ -8,7 +8,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::HashSet;
 use crate::cache::manager::get_db_redis_conn;
 
@@ -108,12 +107,11 @@ fn generate(
 
     let unique_player_id_set = cached_mission_list
         .iter()
-        .map(|item| {
+        .flat_map(|item| {
             item.player_info
                 .iter()
                 .map(|player_info| player_info.player_id)
         })
-        .flatten()
         .collect::<HashSet<_>>();
 
     let unique_player_count = unique_player_id_set.len() as i32;
@@ -132,7 +130,7 @@ fn generate(
                 }
             }
 
-            return false;
+            false
         })
         .count();
 
@@ -145,7 +143,7 @@ fn generate(
                 }
             }
 
-            return false;
+            false
         })
         .count();
 
@@ -158,7 +156,7 @@ fn generate(
                 }
             }
 
-            return false;
+            false
         })
         .count();
 

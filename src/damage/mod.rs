@@ -25,18 +25,10 @@ impl Default for FriendlyFireData {
 }
 
 #[derive(Serialize)]
+#[derive(Default)]
 pub struct PlayerFriendlyFireInfo {
     pub cause: HashMap<String, FriendlyFireData>,
     pub take: HashMap<String, FriendlyFireData>,
-}
-
-impl Default for PlayerFriendlyFireInfo {
-    fn default() -> Self {
-        PlayerFriendlyFireInfo {
-            cause: HashMap::new(),
-            take: HashMap::new(),
-        }
-    }
 }
 
 #[derive(Serialize)]

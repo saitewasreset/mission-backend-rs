@@ -12,7 +12,6 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use kpi::{KPIComponent, KPIConfig};
 use serde::{Deserialize, Serialize};
-use std::cell::LazyCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -165,7 +164,7 @@ pub struct APIResponse<T: Serialize> {
     pub data: Option<T>,
 }
 
-impl<'a, T: Serialize> APIResponse<T> {
+impl<T: Serialize> APIResponse<T> {
     pub fn new(code: i32, message: String, data: Option<T>) -> Self {
         APIResponse {
             code,

@@ -51,7 +51,7 @@ impl CachedGlobalKPIState {
         let begin = Instant::now();
 
         let cached_mission_kpi_set = cached_mission_kpi_list
-            .into_iter()
+            .iter()
             .map(|item| (item.mission_id, item))
             .collect::<HashMap<_, _>>();
 
@@ -63,7 +63,7 @@ impl CachedGlobalKPIState {
             .filter(|x| !invalid_mission_id_set.contains(&x.mission_info.id))
             .collect::<Vec<_>>();
 
-        if cached_mission_list.len() == 0 {
+        if cached_mission_list.is_empty() {
             return (
                 CachedGlobalKPIState {
                     character_correction_factor: HashMap::new(),
@@ -100,8 +100,7 @@ impl CachedGlobalKPIState {
                     .kill_info
                     .get(&player_info.player_id)
                     .iter()
-                    .map(|player_info| player_info.values())
-                    .flatten()
+                    .flat_map(|player_info| player_info.values())
                     .map(|pack| pack.total_amount as f64)
                     .sum::<f64>();
 
@@ -109,8 +108,7 @@ impl CachedGlobalKPIState {
                     .damage_info
                     .get(&player_info.player_id)
                     .iter()
-                    .map(|player_info| player_info.iter())
-                    .flatten()
+                    .flat_map(|player_info| player_info.iter())
                     .filter(|(_, pack)| pack.taker_type != 1)
                     .map(|(taker_game_id, pack)| (taker_game_id.clone(), pack.total_amount))
                     .collect::<HashMap<_, _>>();
@@ -126,8 +124,7 @@ impl CachedGlobalKPIState {
                     .resource_info
                     .get(&player_info.player_id)
                     .iter()
-                    .map(|player_info| player_info.iter())
-                    .flatten()
+                    .flat_map(|player_info| player_info.iter())
                     .filter(|(resource_game_id, _)| *resource_game_id == NITRA_GAME_ID)
                     .map(|(_, total_amount)| *total_amount)
                     .sum::<f64>();
@@ -136,8 +133,7 @@ impl CachedGlobalKPIState {
                     .resource_info
                     .get(&player_info.player_id)
                     .iter()
-                    .map(|player_info| player_info.iter())
-                    .flatten()
+                    .flat_map(|player_info| player_info.iter())
                     .map(|(_, total_amount)| *total_amount)
                     .sum::<f64>();
 
@@ -251,7 +247,7 @@ impl CachedGlobalKPIState {
             .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or_default();
 
-        for (_, correction_info) in &mut character_correction_factor {
+        for correction_info in character_correction_factor.values_mut() {
             let damage = correction_info.get_mut(&KPIComponent::Damage).unwrap();
             damage.correction_factor = damage.value / min_damage;
 
@@ -268,7 +264,7 @@ impl CachedGlobalKPIState {
             minerals.correction_factor = minerals.value / min_minerals;
         }
 
-        let standard_character = vec![
+        let standard_character = [
             CharacterKPIType::Driller,
             CharacterKPIType::Engineer,
             CharacterKPIType::Gunner,
@@ -282,7 +278,7 @@ impl CachedGlobalKPIState {
                 .iter()
                 .map(|character| {
                     character_correction_factor
-                        .get(&character)
+                        .get(character)
                         .unwrap()
                         .get(item)
                         .unwrap()
@@ -294,9 +290,10 @@ impl CachedGlobalKPIState {
         }
 
         // Vec<(f64, f64) -> (player_index, corrected_index)
+        type MissionKPIIndexInfoByPlayer = HashMap<i16, HashMap<KPIComponent, Vec<(f64, f64)>>>;
         let mut character_kpi_type_to_player_id_to_mission_index_list: HashMap<
             CharacterKPIType,
-            HashMap<i16, HashMap<KPIComponent, Vec<(f64, f64)>>>,
+            MissionKPIIndexInfoByPlayer,
         > = HashMap::new();
 
         for mission in &cached_mission_list {
@@ -337,7 +334,7 @@ impl CachedGlobalKPIState {
                     .unwrap();
 
                 for kpi_component in CORRECTION_ITEMS {
-                    let raw_data = player_raw_kpi_data.get(&kpi_component).unwrap();
+                    let raw_data = player_raw_kpi_data.get(kpi_component).unwrap();
                     let corrected_index = raw_data.raw_index
                         * mission_correction_sum.get(kpi_component).unwrap()
                         / standard_correction_sum.get(kpi_component).unwrap();
@@ -364,7 +361,7 @@ impl CachedGlobalKPIState {
         for (character_kpi_type, player_map) in
             &character_kpi_type_to_player_id_to_mission_index_list
         {
-            for (_, player_data) in player_map {
+            for player_data in player_map.values() {
                 for (&kpi_component, index_list) in player_data {
                     let player_index_sum = index_list
                         .iter()
@@ -486,7 +483,7 @@ impl CachedGlobalKPIState {
             &cached_mission_list,
             &cached_mission_kpi_list,
             invalid_mission_id_list,
-            &kpi_config,
+            kpi_config,
             player_id_to_name,
             character_id_to_game_id,
             scout_special_player_set,
@@ -568,7 +565,7 @@ impl Cacheable for CachedGlobalKPIState {
             kpi_config,
             &player_id_to_name,
             &character_id_to_game_id,
-            &scout_special_player_set,
+            scout_special_player_set,
         ).map_err(|e| {
             CacheGenerationError::InternalError(format!("cannot generate global kpi state: {}", e))
         })?;

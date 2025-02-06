@@ -71,7 +71,7 @@ fn generate(
         .collect::<HashSet<_>>();
 
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|info| !invalid_mission_id_set.contains(&info.mission_info.id))
         .collect::<Vec<_>>();
 
@@ -83,7 +83,7 @@ fn generate(
         let mission_type = mission.mission_info.mission_type_id;
         mission_list_by_type
             .entry(mission_type)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(mission);
     }
 

@@ -8,7 +8,6 @@ use actix_web::{
     web::{self, Data, Json},
 };
 use diesel::prelude::*;
-use log::error;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
 
@@ -94,7 +93,7 @@ fn generate_for_mission_list(
         .collect::<HashSet<_>>();
 
     let cached_mission_list = cached_mission_list
-        .into_iter()
+        .iter()
         .filter(|item| !invalid_mission_set.contains(&item.mission_info.id))
         .collect::<Vec<_>>();
 

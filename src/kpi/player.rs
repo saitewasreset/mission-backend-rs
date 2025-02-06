@@ -8,7 +8,6 @@ use crate::mission::MissionKPIInfoFull;
 use crate::{APIResponse, AppState, DbPool};
 use actix_web::{get, web::{self, Data, Json}, HttpRequest};
 use diesel::prelude::*;
-use log::error;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use crate::cache::manager::{get_db_redis_conn, CacheManager};
@@ -72,7 +71,7 @@ pub fn generate_player_kpi(
         .collect::<HashSet<_>>();
 
     let mission_kpi_cached_info_list = mission_kpi_cached_info_list
-        .into_iter()
+        .iter()
         .filter(|item| !invalid_mission_id_set.contains(&item.mission_id))
         .collect::<Vec<_>>();
 
@@ -89,7 +88,7 @@ pub fn generate_player_kpi(
                 (
                     mission_kpi_info.mission_id,
                     generate_mission_kpi_full(
-                        &mission_kpi_info,
+                        mission_kpi_info,
                         player_id_to_name,
                         global_kpi_state,
                         kpi_config,
@@ -99,9 +98,12 @@ pub fn generate_player_kpi(
         })
         .collect::<HashMap<_, _>>();
 
+    // character -> [(mission_id, MissionKPIInfoFull)]
+    type PlayerMissionKPIInfoFullListByCharacter<'a> = HashMap<&'a String, Vec<(i32, &'a MissionKPIInfoFull)>>;
+
     let mut player_name_to_character_type_to_mission_list: HashMap<
         &String,
-        HashMap<&String, Vec<(i32, &MissionKPIInfoFull)>>,
+        PlayerMissionKPIInfoFullListByCharacter,
     > = HashMap::new();
 
     for (mission_id, mission_kpi_info_list) in mission_kpi_by_mission_id.values() {

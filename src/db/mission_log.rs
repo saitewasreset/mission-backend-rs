@@ -87,7 +87,7 @@ impl TryFrom<&str> for LogMissionInfo {
         let file_part_list = value.split("______").collect::<Vec<&str>>();
 
         let mission_info_part = *file_part_list
-            .get(0)
+            .first()
             .ok_or(format!("missing mission info part in log: {}", value))?;
 
         let mission_info_split_row = mission_info_part.trim().split('|').collect::<Vec<&str>>();
@@ -422,7 +422,7 @@ impl TryFrom<&str> for LogDamageInfo {
         }
 
         // Note: typo "Unkown" in Mission Monitor Mod
-        if record_weapon == "Unkown" || record_weapon == "" || record_weapon == record_damage_causer
+        if record_weapon.is_empty() || record_weapon == "Unkown" || record_weapon == record_damage_causer
         {
             record_weapon = "Unknown";
         }

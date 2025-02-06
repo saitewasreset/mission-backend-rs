@@ -78,7 +78,7 @@ fn main() {
         .expect("failed parsing endpoint url");
 
     cookie_jar.add_cookie_str(
-        &format!("access_token = {};", access_token).as_str(),
+        format!("access_token = {};", access_token).as_str(),
         &upload_url,
     );
 
