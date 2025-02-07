@@ -63,7 +63,7 @@ pub struct OverallDamageInfo {
     pub entity_mapping: HashMap<String, String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub struct DamagePack {
     pub taker_id: i16,
     pub taker_type: i16,
@@ -71,14 +71,14 @@ pub struct DamagePack {
     pub total_amount: f64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct KillPack {
     pub taker_id: i16,
     pub taker_name: String,
     pub total_amount: i32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct WeaponPack {
     pub weapon_id: i16,
     // 含友伤

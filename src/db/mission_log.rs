@@ -75,6 +75,15 @@ pub struct LogContent {
     pub supply_info: Vec<LogSupplyInfo>,
 }
 
+fn fix_mission_time_log(raw_mission_time: &str) -> Result<i16, String> {
+    raw_mission_time
+        .split(',')
+        .collect::<Vec<&str>>()
+        .join("")
+        .parse::<i16>()
+        .map_err(|e| format!("cannot parse mission time: {}", e))
+}
+
 impl TryFrom<&str> for LogMissionInfo {
     type Error = String;
 
@@ -347,12 +356,7 @@ impl TryFrom<&str> for LogDamageInfo {
             return Err(format!("element count of row is not 9: {}", value));
         }
 
-        let mission_time = damage_split_row[0]
-            .split(',')
-            .collect::<Vec<&str>>()
-            .join("")
-            .parse::<i16>()
-            .map_err(|e| format!("cannot parse mission time: {}", e))?;
+        let mission_time = fix_mission_time_log(damage_split_row[0])?;
 
         // Workaround for a bug in Mission Monitor Mod:
         // Sometimes there exists split character ',' in damage string
@@ -481,12 +485,7 @@ impl TryFrom<&str> for LogKillInfo {
             return Err(format!("element count of row is not 3: {}", value));
         }
 
-        let mission_time = kill_split_row[0]
-            .split(',')
-            .collect::<Vec<&str>>()
-            .join("")
-            .parse::<i16>()
-            .map_err(|e| format!("cannot parse mission time: {}", e))?;
+        let mission_time = fix_mission_time_log(kill_split_row[0])?;
 
         let player_name = String::from(kill_split_row[1]);
         let (_, killed_entity) = transform_record_entity_name(kill_split_row[2]);
@@ -508,12 +507,7 @@ impl TryFrom<&str> for LogResourceInfo {
             return Err(format!("element count of row is not 4: {}", value));
         }
 
-        let mission_time = resource_info_row[0]
-            .split(',')
-            .collect::<Vec<&str>>()
-            .join("")
-            .parse::<i16>()
-            .map_err(|e| format!("cannot parse mission time: {}", e))?;
+        let mission_time = fix_mission_time_log(resource_info_row[0])?;
 
         let player_name = String::from(resource_info_row[1]);
         let resource = String::from(resource_info_row[2]);
@@ -543,12 +537,7 @@ impl TryFrom<&str> for LogSupplyInfo {
             return Err(format!("element count of row is not 4: {}", value));
         }
 
-        let mission_time = resource_info_row[0]
-            .split(',')
-            .collect::<Vec<&str>>()
-            .join("")
-            .parse::<i16>()
-            .map_err(|e| format!("cannot parse mission time: {}", e))?;
+        let mission_time = fix_mission_time_log(resource_info_row[0])?;
 
         let player_name = String::from(resource_info_row[1]);
 

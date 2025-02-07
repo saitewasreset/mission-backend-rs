@@ -223,26 +223,8 @@ fn generate_for_player(
         }
     }
 
-    let mut result_ff_cause_map = HashMap::with_capacity(ff_cause_map.len());
-    let mut result_ff_take_map = HashMap::with_capacity(ff_take_map.len());
-
-    for (taker_name, data) in ff_cause_map {
-        if data.show {
-            result_ff_cause_map.insert(taker_name, data);
-        } else {
-            let entry = result_ff_cause_map.entry(String::new()).or_default();
-            entry.damage += data.damage;
-        }
-    }
-
-    for (causer_name, data) in ff_take_map {
-        if data.show {
-            result_ff_take_map.insert(causer_name, data);
-        } else {
-            let entry = result_ff_take_map.entry(String::new()).or_default();
-            entry.damage += data.damage;
-        }
-    }
+    let result_ff_cause_map = ff_map_filter_watchlist(ff_cause_map);
+    let result_ff_take_map = ff_map_filter_watchlist(ff_take_map);
 
     let total_supply_count = player_cached_mission_list
         .iter()
@@ -267,4 +249,19 @@ fn generate_for_player(
         average_supply_count,
         valid_game_count: player_cached_mission_list.len() as i32,
     }
+}
+
+fn ff_map_filter_watchlist(origin_map: HashMap<String, FriendlyFireData>) -> HashMap<String, FriendlyFireData> {
+    let mut out_map = HashMap::with_capacity(origin_map.len());
+
+    for (taker_name, data) in origin_map {
+        if data.show {
+            out_map.insert(taker_name, data);
+        } else {
+            let entry = out_map.entry(String::new()).or_default();
+            entry.damage += data.damage;
+        }
+    }
+
+    out_map
 }

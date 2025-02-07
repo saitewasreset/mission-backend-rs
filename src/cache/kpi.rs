@@ -1,7 +1,7 @@
 use crate::cache::mission::{cache_write_redis, CacheTimeInfo, MissionCachedInfo, MissionKPICachedInfo};
 use crate::kpi::*;
-use crate::{CORRECTION_ITEMS, KPI_CALCULATION_PLAYER_INDEX, NITRA_GAME_ID, TRANSFORM_KPI_COMPONENTS};
-use diesel::{PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
+use crate::{DbConn, CORRECTION_ITEMS, KPI_CALCULATION_PLAYER_INDEX, NITRA_GAME_ID, TRANSFORM_KPI_COMPONENTS};
+use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -49,6 +49,13 @@ impl CachedGlobalKPIState {
         scout_special_player_set: &HashSet<String>,
     ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
+
+        let target_component_list = [
+            KPIComponent::Damage,
+            KPIComponent::Priority,
+            KPIComponent::Kill,
+            KPIComponent::Nitra,
+            KPIComponent::Minerals];
 
         let cached_mission_kpi_set = cached_mission_kpi_list
             .iter()
@@ -217,51 +224,23 @@ impl CachedGlobalKPIState {
             character_correction_factor.insert(character_kpi_type, correction_info);
         }
 
-        let min_damage = character_correction_factor
-            .values()
-            .map(|x| x.get(&KPIComponent::Damage).unwrap().value)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_default();
 
-        let min_priority = character_correction_factor
-            .values()
-            .map(|x| x.get(&KPIComponent::Priority).unwrap().value)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_default();
+        let min_value_list =
+            target_component_list.iter().map(|component| {
+                character_correction_factor
+                    .values()
+                    .map(|x| x.get(component).unwrap().value)
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap_or_default()
+            }).collect::<Vec<_>>();
 
-        let min_kill = character_correction_factor
-            .values()
-            .map(|x| x.get(&KPIComponent::Kill).unwrap().value)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_default();
-
-        let min_nitra = character_correction_factor
-            .values()
-            .map(|x| x.get(&KPIComponent::Nitra).unwrap().value)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_default();
-
-        let min_minerals = character_correction_factor
-            .values()
-            .map(|x| x.get(&KPIComponent::Minerals).unwrap().value)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_default();
 
         for correction_info in character_correction_factor.values_mut() {
-            let damage = correction_info.get_mut(&KPIComponent::Damage).unwrap();
-            damage.correction_factor = damage.value / min_damage;
-
-            let priority = correction_info.get_mut(&KPIComponent::Priority).unwrap();
-            priority.correction_factor = priority.value / min_priority;
-
-            let kill = correction_info.get_mut(&KPIComponent::Kill).unwrap();
-            kill.correction_factor = kill.value / min_kill;
-
-            let nitra = correction_info.get_mut(&KPIComponent::Nitra).unwrap();
-            nitra.correction_factor = nitra.value / min_nitra;
-
-            let minerals = correction_info.get_mut(&KPIComponent::Minerals).unwrap();
-            minerals.correction_factor = minerals.value / min_minerals;
+            for (idx, component) in target_component_list.iter().enumerate() {
+                let min_value = min_value_list[idx];
+                let info = correction_info.get_mut(component).unwrap();
+                info.correction_factor = info.value / min_value;
+            }
         }
 
         let standard_character = [
@@ -457,7 +436,7 @@ impl CachedGlobalKPIState {
     }
 
     pub fn from_redis_all(
-        db_conn: &mut PgConnection,
+        db_conn: &mut DbConn,
         redis_conn: &mut redis::Connection,
         invalid_mission_id_list: &[i32],
         kpi_config: &KPIConfig,

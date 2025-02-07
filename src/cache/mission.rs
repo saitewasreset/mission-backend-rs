@@ -1,17 +1,21 @@
+use std::borrow::Borrow;
 use crate::damage::{DamagePack, KillPack, SupplyPack, WeaponPack};
 use crate::db::models::*;
 use crate::db::schema::*;
 use crate::kpi::{
     apply_weight_table, friendly_fire_index, CharacterKPIType, KPIComponent, KPIConfig,
 };
-use crate::{FLOAT_EPSILON, NITRA_GAME_ID};
+use crate::{DbConn, FLOAT_EPSILON, NITRA_GAME_ID};
 use diesel::prelude::*;
-use diesel::{PgConnection, RunQueryDsl};
+use diesel::RunQueryDsl;
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::hash::Hash;
+use std::ops::{Add, AddAssign};
 use std::time::{Duration, Instant};
+use diesel::associations::BelongsTo;
 use crate::cache::manager::{get_from_redis, CacheContext, CacheError, CacheGenerationError, Cacheable};
 // 用于缓存输出任务详情及计算任务KPI、玩家KPI、赋分信息等需要的任务信息
 // depends on:
@@ -90,6 +94,95 @@ pub struct MissionCachedInfo {
     pub supply_info: HashMap<i16, Vec<SupplyPack>>,
 }
 
+fn combine_player_info<IK, OK, V, F, O>(origin_map: HashMap<OK, HashMap<IK, V>>, key_func: F) -> HashMap<IK, O>
+where
+    IK: Eq + Hash,
+    OK: Eq + Hash,
+    F: Fn(V) -> O,
+    O: Add + AddAssign + Default,
+{
+    let mut result = HashMap::new();
+
+    for (s, val) in origin_map.into_iter().flat_map(|(_, v)| v.into_iter()) {
+        *result.entry(s).or_default() += key_func(val);
+    }
+
+    result
+}
+
+fn map_inner_value<IK, OK, V, F, O>(origin_map: HashMap<OK, HashMap<IK, V>>, key_func: F) -> HashMap<OK, HashMap<IK, O>>
+where
+    IK: Eq + Hash,
+    OK: Eq + Hash,
+    F: Fn(V) -> Option<O>,
+    O: Add + AddAssign + Default,
+{
+    let mut result = HashMap::with_capacity(origin_map.len());
+
+    for (k, v) in origin_map {
+        let inner_map = v.into_iter()
+            .flat_map(|(k, v)| {
+                let new_val = key_func(v);
+
+                new_val.map(|x| (k, x))
+            })
+            .collect::<HashMap<_, _>>();
+        result.insert(k, inner_map);
+    }
+
+    result
+}
+
+fn clone_inner_key<OK, IK, V>(origin_map: HashMap<OK, HashMap<&IK, V>>) -> HashMap<OK, HashMap<IK, V>>
+where
+    OK: Clone + Eq + Hash,
+    IK: Clone + Eq + Hash,
+{
+    origin_map
+        .into_iter()
+        .map(|(k, v)| {
+            let inner_map = v
+                .into_iter()
+                .map(|(k, v)| (k.clone(), v))
+                .collect::<HashMap<_, _>>();
+            (k, inner_map)
+        })
+        .collect::<HashMap<_, _>>()
+}
+
+fn db_group_by_mission<'a, Child>(parent: &'a Vec<Mission>, children: Vec<Child>) -> HashMap<i32, Vec<Child>>
+where
+    Child: BelongsTo<Mission>,
+    <&'a Mission as Identifiable>::Id: Borrow<Child::ForeignKey>,
+{
+    children
+        .grouped_by(parent)
+        .into_iter()
+        .zip(parent)
+        .map(|(children, parent)| (parent.id, children))
+        .collect::<HashMap<_, _>>()
+}
+
+impl MissionCachedInfo {
+    pub fn combine_kill_info(origin: HashMap<i16, HashMap<String, KillPack>>) -> HashMap<String, f64> {
+        combine_player_info(origin, |kill_pack| kill_pack.total_amount as f64)
+    }
+
+    pub fn combine_damage_info(origin: HashMap<i16, HashMap<String, DamagePack>>) -> HashMap<String, f64> {
+        combine_player_info(origin, |damage_pack| {
+            if damage_pack.taker_type == 1 {
+                0.0
+            } else {
+                damage_pack.total_amount
+            }
+        })
+    }
+
+    pub fn combine_resource_info(origin: HashMap<i16, HashMap<String, f64>>) -> HashMap<String, f64> {
+        combine_player_info(origin, |x| x)
+    }
+}
+
 pub fn cache_write_redis(data: impl Serialize, key: &str, redis_conn: &mut redis::Connection) -> Result<(), String> {
     let serialized = rmp_serde::to_vec(&data).map_err(|e| format!("cannot serialize data: {}", e))?;
     redis_conn.set::<_, _, ()>(key, serialized).map_err(|e| format!("cannot write data to redis: {}", e))?;
@@ -97,29 +190,88 @@ pub fn cache_write_redis(data: impl Serialize, key: &str, redis_conn: &mut redis
     Ok(())
 }
 
+struct MissionRawInfo {
+    mission: Mission,
+    player_info_list: Vec<PlayerInfo>,
+    raw_kill_info_list: Vec<KillInfo>,
+    raw_damage_info_list: Vec<DamageInfo>,
+    raw_resource_info_list: Vec<ResourceInfo>,
+    raw_supply_info_list: Vec<SupplyInfo>,
+}
+
+struct IDMapping {
+    id_to_player_name: HashMap<i16, String>,
+    id_to_entity_game_id: HashMap<i16, String>,
+    id_to_weapon_game_id: HashMap<i16, String>,
+    id_to_resource_game_id: HashMap<i16, String>,
+}
+
+impl IDMapping {
+    fn load_from_db(conn: &mut DbConn) -> Result<IDMapping, String> {
+        let player_list: Vec<Player> = player::table.load(conn).map_err(|e| format!("cannot load player from db: {}", e))?;
+
+        let entity_list: Vec<Entity> = entity::table.load(conn).map_err(|e| format!("cannot load entity from db: {}", e))?;
+
+        let resource_list: Vec<Resource> = resource::table.load(conn).map_err(|e| format!("cannot load resource from db: {}", e))?;
+
+        let weapon_list: Vec<Weapon> = weapon::table.load(conn).map_err(|e| format!("cannot load weapon from db: {}", e))?;
+
+        let id_to_player_name = player_list
+            .into_iter()
+            .map(|player| (player.id, player.player_name))
+            .collect::<HashMap<_, _>>();
+
+        let id_to_entity_game_id = entity_list
+            .into_iter()
+            .map(|entity| (entity.id, entity.entity_game_id))
+            .collect::<HashMap<_, _>>();
+
+        let id_to_resource_game_id = resource_list
+            .into_iter()
+            .map(|resource| (resource.id, resource.resource_game_id))
+            .collect::<HashMap<_, _>>();
+
+        let id_to_weapon_game_id = weapon_list
+            .into_iter()
+            .map(|weapon| (weapon.id, weapon.weapon_game_id))
+            .collect::<HashMap<_, _>>();
+
+        Ok(IDMapping {
+            id_to_player_name,
+            id_to_entity_game_id,
+            id_to_weapon_game_id,
+            id_to_resource_game_id,
+        })
+    }
+}
+
 impl MissionCachedInfo {
     fn generate(
-        mission_info: &Mission,
-        player_info_list: &Vec<PlayerInfo>,
-        raw_kill_info_list: &Vec<KillInfo>,
-        raw_damage_info_list: &Vec<DamageInfo>,
-        raw_resource_info_list: &Vec<ResourceInfo>,
-        raw_supply_info_list: &Vec<SupplyInfo>,
+        mission_raw_info: MissionRawInfo,
         entity_blacklist_set: &HashSet<String>,
         entity_combine: &HashMap<String, String>,
         weapon_combine: &HashMap<String, String>,
-        id_to_player_name: &HashMap<i16, String>,
-        id_to_entity_game_id: &HashMap<i16, String>,
-        id_to_weapon_game_id: &HashMap<i16, String>,
-        id_to_resource_game_id: &HashMap<i16, String>,
+        id_mapping: &IDMapping,
     ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
+
+        let mission_info = mission_raw_info.mission;
+        let player_info_list = mission_raw_info.player_info_list;
+        let raw_kill_info_list = mission_raw_info.raw_kill_info_list;
+        let raw_damage_info_list = mission_raw_info.raw_damage_info_list;
+        let raw_resource_info_list = mission_raw_info.raw_resource_info_list;
+        let raw_supply_info_list = mission_raw_info.raw_supply_info_list;
+
+        let id_to_player_name = &id_mapping.id_to_player_name;
+        let id_to_entity_game_id = &id_mapping.id_to_entity_game_id;
+        let id_to_weapon_game_id = &id_mapping.id_to_weapon_game_id;
+        let id_to_resource_game_id = &id_mapping.id_to_resource_game_id;
 
         let mut player_index = HashMap::with_capacity(player_info_list.len());
         let mut revive_count = HashMap::with_capacity(player_info_list.len());
         let mut death_count = HashMap::with_capacity(player_info_list.len());
 
-        for current_player_info in player_info_list {
+        for current_player_info in &player_info_list {
             player_index.insert(
                 current_player_info.player_id,
                 current_player_info.present_time as f64 / mission_info.mission_time as f64,
@@ -294,46 +446,16 @@ impl MissionCachedInfo {
             .collect::<HashMap<_, _>>();
 
         // Convert inner HashMap<&String, _> to HashMap<String, _>
-        let kill_info = kill_info
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v.into_iter()
-                        .map(|(inner_k, inner_v)| (inner_k.clone(), inner_v))
-                        .collect::<HashMap<_, _>>(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let kill_info = clone_inner_key(kill_info);
 
-        let damage_info = damage_info
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v.into_iter()
-                        .map(|(inner_k, inner_v)| (inner_k.clone(), inner_v))
-                        .collect::<HashMap<_, _>>(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let damage_info = clone_inner_key(damage_info);
 
         let weapon_damage_info = weapon_damage_info
             .into_iter()
             .map(|(k, v)| (k.clone(), v))
             .collect::<HashMap<_, _>>();
 
-        let resource_info = resource_info
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v.into_iter()
-                        .map(|(inner_k, inner_v)| (inner_k.clone(), inner_v))
-                        .collect::<HashMap<_, _>>(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let resource_info = clone_inner_key(resource_info);
 
         let elapsed = begin.elapsed();
 
@@ -359,7 +481,7 @@ impl MissionCachedInfo {
     }
 
     pub fn from_db(
-        conn: &mut PgConnection,
+        conn: &mut DbConn,
         entity_blacklist_set: &HashSet<String>,
         entity_combine: &HashMap<String, String>,
         weapon_combine: &HashMap<String, String>,
@@ -367,33 +489,7 @@ impl MissionCachedInfo {
     ) -> Result<(Self, CacheTimeInfo), String> {
         let begin = Instant::now();
 
-        let player_list: Vec<Player> = player::table.load(conn).map_err(|e| format!("cannot load player from db: {}", e))?;
-
-        let entity_list: Vec<Entity> = entity::table.load(conn).map_err(|e| format!("cannot load entity from db: {}", e))?;
-
-        let resource_list: Vec<Resource> = resource::table.load(conn).map_err(|e| format!("cannot load resource from db: {}", e))?;
-
-        let weapon_list: Vec<Weapon> = weapon::table.load(conn).map_err(|e| format!("cannot load weapon from db: {}", e))?;
-
-        let id_to_player_name = player_list
-            .into_iter()
-            .map(|player| (player.id, player.player_name))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_entity_game_id = entity_list
-            .into_iter()
-            .map(|entity| (entity.id, entity.entity_game_id))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_resource_game_id = resource_list
-            .into_iter()
-            .map(|resource| (resource.id, resource.resource_game_id))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_weapon_game_id = weapon_list
-            .into_iter()
-            .map(|weapon| (weapon.id, weapon.weapon_game_id))
-            .collect::<HashMap<_, _>>();
+        let id_mapping = IDMapping::load_from_db(conn)?;
 
         let mission_info: Mission = mission::table
             .filter(mission::id.eq(mission_id))
@@ -422,23 +518,23 @@ impl MissionCachedInfo {
             "cannot load supply info for mission_id = {} from db: {}", mission_id, e
         ))?;
 
+        let mission_raw_info = MissionRawInfo {
+            mission: mission_info,
+            player_info_list: player_info,
+            raw_kill_info_list: kill_info,
+            raw_damage_info_list: damage_info,
+            raw_resource_info_list: resource_info,
+            raw_supply_info_list: supply_info,
+        };
 
         let load_from_db_elapsed = begin.elapsed();
 
         let (result, generate_elapsed) = Self::generate(
-            &mission_info,
-            &player_info,
-            &kill_info,
-            &damage_info,
-            &resource_info,
-            &supply_info,
+            mission_raw_info,
             entity_blacklist_set,
             entity_combine,
             weapon_combine,
-            &id_to_player_name,
-            &id_to_entity_game_id,
-            &id_to_weapon_game_id,
-            &id_to_resource_game_id,
+            &id_mapping,
         );
 
         Ok(
@@ -452,40 +548,14 @@ impl MissionCachedInfo {
     }
 
     pub fn from_db_all(
-        conn: &mut PgConnection,
+        conn: &mut DbConn,
         entity_blacklist_set: &HashSet<String>,
         entity_combine: &HashMap<String, String>,
         weapon_combine: &HashMap<String, String>,
     ) -> Result<(Vec<Self>, CacheTimeInfo), String> {
         let begin = Instant::now();
 
-        let player_list: Vec<Player> = player::table.load(conn).map_err(|e| format!("cannot load player from db: {}", e))?;
-
-        let entity_list: Vec<Entity> = entity::table.load(conn).map_err(|e| format!("cannot load entity from db: {}", e))?;
-
-        let resource_list: Vec<Resource> = resource::table.load(conn).map_err(|e| format!("cannot load resource from db: {}", e))?;
-
-        let weapon_list: Vec<Weapon> = weapon::table.load(conn).map_err(|e| format!("cannot load weapon from db: {}", e))?;
-
-        let id_to_player_name = player_list
-            .into_iter()
-            .map(|player| (player.id, player.player_name))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_entity_game_id = entity_list
-            .into_iter()
-            .map(|entity| (entity.id, entity.entity_game_id))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_resource_game_id = resource_list
-            .into_iter()
-            .map(|resource| (resource.id, resource.resource_game_id))
-            .collect::<HashMap<_, _>>();
-
-        let id_to_weapon_game_id = weapon_list
-            .into_iter()
-            .map(|weapon| (weapon.id, weapon.weapon_game_id))
-            .collect::<HashMap<_, _>>();
+        let id_mapping = IDMapping::load_from_db(conn)?;
 
         let all_mission_info = mission::table.select(Mission::as_select()).load(conn).map_err(|e| format!("cannot load missions from db: {}", e))?;
 
@@ -507,58 +577,39 @@ impl MissionCachedInfo {
         let load_from_db_elapsed = begin.elapsed();
         let begin = Instant::now();
 
-        let player_info_by_mission = all_player_info
-            .grouped_by(&all_mission_info)
-            .into_iter()
-            .zip(&all_mission_info)
-            .map(|(children, parent)| (parent.id, children))
-            .collect::<HashMap<_, _>>();
+        let player_info_by_mission = db_group_by_mission(&all_mission_info, all_player_info);
 
-        let damage_info_by_mission = all_damage_info
-            .grouped_by(&all_mission_info)
-            .into_iter()
-            .zip(&all_mission_info)
-            .map(|(children, parent)| (parent.id, children))
-            .collect::<HashMap<_, _>>();
+        let damage_info_by_mission = db_group_by_mission(&all_mission_info, all_damage_info);
 
-        let kill_info_by_mission = all_kill_info
-            .grouped_by(&all_mission_info)
-            .into_iter()
-            .zip(&all_mission_info)
-            .map(|(children, parent)| (parent.id, children))
-            .collect::<HashMap<_, _>>();
+        let kill_info_by_mission = db_group_by_mission(&all_mission_info, all_kill_info);
 
-        let resource_info_by_mission = all_resource_info
-            .grouped_by(&all_mission_info)
-            .into_iter()
-            .zip(&all_mission_info)
-            .map(|(children, parent)| (parent.id, children))
-            .collect::<HashMap<_, _>>();
+        let resource_info_by_mission = db_group_by_mission(&all_mission_info, all_resource_info);
 
-        let supply_info_by_mission = all_supply_info
-            .grouped_by(&all_mission_info)
-            .into_iter()
-            .zip(&all_mission_info)
-            .map(|(children, parent)| (parent.id, children))
-            .collect::<HashMap<_, _>>();
+        let supply_info_by_mission = db_group_by_mission(&all_mission_info, all_supply_info);
 
-        let result = all_mission_info
-            .iter()
-            .map(|mission| {
+        let mut mission_info_list = Vec::with_capacity(all_mission_info.len());
+
+        for mission in all_mission_info {
+            let mission_id = mission.id;
+            mission_info_list.push(MissionRawInfo {
+                mission,
+                player_info_list: player_info_by_mission.get(&mission_id).unwrap().clone(),
+                raw_kill_info_list: kill_info_by_mission.get(&mission_id).unwrap().clone(),
+                raw_damage_info_list: damage_info_by_mission.get(&mission_id).unwrap().clone(),
+                raw_resource_info_list: resource_info_by_mission.get(&mission_id).unwrap().clone(),
+                raw_supply_info_list: supply_info_by_mission.get(&mission_id).unwrap().clone(),
+            })
+        }
+
+        let result = mission_info_list
+            .into_iter()
+            .map(|mission_raw_info| {
                 Self::generate(
-                    mission,
-                    player_info_by_mission.get(&mission.id).unwrap(),
-                    kill_info_by_mission.get(&mission.id).unwrap(),
-                    damage_info_by_mission.get(&mission.id).unwrap(),
-                    resource_info_by_mission.get(&mission.id).unwrap(),
-                    supply_info_by_mission.get(&mission.id).unwrap(),
+                    mission_raw_info,
                     entity_blacklist_set,
                     entity_combine,
                     weapon_combine,
-                    &id_to_player_name,
-                    &id_to_entity_game_id,
-                    &id_to_weapon_game_id,
-                    &id_to_resource_game_id,
+                    &id_mapping,
                 )
                     .0
             })
@@ -585,7 +636,7 @@ impl MissionCachedInfo {
     }
 
     pub fn try_get_cached_all(
-        db_conn: &mut PgConnection,
+        db_conn: &mut DbConn,
         redis_conn: &mut redis::Connection,
     ) -> Result<Vec<Self>, CacheError> {
         let mission_list = mission::table
@@ -677,52 +728,21 @@ impl MissionKPICachedInfo {
     ) -> (Self, CacheTimeInfo) {
         let begin = Instant::now();
 
-        let damage_map = mission_info
-            .damage_info
-            .iter()
-            .map(|(player_id, player_data)| {
-                (
-                    *player_id,
-                    player_data
-                        .iter()
-                        .filter(|(_, pack)| pack.taker_type != 1)
-                        .map(|(k, v)| (k.clone(), v.total_amount))
-                        .collect::<HashMap<_, _>>(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let damage_map = map_inner_value(mission_info.damage_info.clone(), |damage_pack| {
+            if damage_pack.taker_type == 1 {
+                None
+            } else {
+                Some(damage_pack.total_amount)
+            }
+        });
 
-        let kill_map = mission_info
-            .kill_info
-            .iter()
-            .map(|(player_id, player_data)| {
-                (
-                    *player_id,
-                    player_data
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.total_amount as f64))
-                        .collect::<HashMap<_, _>>(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+        let kill_map = map_inner_value(mission_info.kill_info.clone(), |kill_pack| Some(kill_pack.total_amount as f64));
 
-        let resource_map = &mission_info.resource_info;
+        let resource_map = map_inner_value(mission_info.resource_info.clone(), Some);
 
-        let mut total_damage_map = HashMap::new();
-        let mut total_kill_map = HashMap::new();
-        let mut total_resource_map = HashMap::new();
-
-        for (taker_id, value) in damage_map.values().flat_map(|v| v.iter()) {
-            *total_damage_map.entry(taker_id.clone()).or_insert(0.0) += *value;
-        }
-
-        for (killer_id, value) in kill_map.values().flat_map(|v| v.iter()) {
-            *total_kill_map.entry(killer_id.clone()).or_insert(0.0) += *value;
-        }
-
-        for (resource_id, value) in resource_map.values().flat_map(|v| v.iter()) {
-            *total_resource_map.entry(resource_id.clone()).or_insert(0.0) += *value;
-        }
+        let total_damage_map = MissionCachedInfo::combine_damage_info(mission_info.damage_info.clone());
+        let total_kill_map = MissionCachedInfo::combine_kill_info(mission_info.kill_info.clone());
+        let total_resource_map = MissionCachedInfo::combine_resource_info(mission_info.resource_info.clone());
 
         let total_weighted_resource_map =
             apply_weight_table(&total_resource_map, &kpi_config.resource_weight_table);
@@ -1027,7 +1047,7 @@ impl MissionKPICachedInfo {
     }
 
     pub fn from_redis_all(
-        db_conn: &mut PgConnection,
+        db_conn: &mut DbConn,
         redis_conn: &mut redis::Connection,
         character_id_to_game_id: &HashMap<i16, String>,
         player_id_to_name: &HashMap<i16, String>,
@@ -1076,7 +1096,7 @@ impl MissionKPICachedInfo {
     }
 
     pub fn try_get_cached_all(
-        db_conn: &mut PgConnection,
+        db_conn: &mut DbConn,
         redis_conn: &mut redis::Connection,
     ) -> Result<Vec<Self>, CacheError> {
         let mission_list = MissionCachedInfo::try_get_cached_all(db_conn, redis_conn)?;

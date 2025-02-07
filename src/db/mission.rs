@@ -17,6 +17,7 @@ use super::DbError;
 
 use diesel::{insert_into, prelude::*};
 use std::collections::HashMap;
+use crate::DbConn;
 
 #[derive(Insertable)]
 #[diesel(table_name = super::schema::mission)]
@@ -99,7 +100,7 @@ pub struct NewSupplyInfo {
 impl NewMission {
     pub fn from_mission_log(
         mission_type_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         mission_log: LogMissionInfo,
     ) -> Result<NewMission, DbError> {
         let mission_type_game_id = mission_log.mission_type_id;
@@ -139,7 +140,7 @@ impl NewPlayerInfo {
     pub fn from_player_info_log(
         player_id_map: &mut HashMap<String, i16>,
         character_id_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         mission_id: i32,
         player_info_log: LogPlayerInfo,
     ) -> Result<NewPlayerInfo, DbError> {
@@ -208,7 +209,7 @@ impl NewDamageInfo {
         player_id_map: &mut HashMap<String, i16>,
         entity_map: &mut HashMap<String, i16>,
         weapon_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         damage_info_log: LogDamageInfo,
     ) -> Result<NewDamageInfo, DbError> {
         let causer_id = match damage_info_log.causer_type {
@@ -330,7 +331,7 @@ impl NewKillInfo {
         mission_id: i32,
         player_id_map: &mut HashMap<String, i16>,
         entity_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         kill_info_log: LogKillInfo,
     ) -> Result<NewKillInfo, DbError> {
         let player_id = match player_id_map.get(&kill_info_log.player_name) {
@@ -386,7 +387,7 @@ impl NewResourceInfo {
         mission_id: i32,
         player_id_map: &mut HashMap<String, i16>,
         resource_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         resource_info_log: LogResourceInfo,
     ) -> Result<NewResourceInfo, DbError> {
         let player_id = match player_id_map.get(&resource_info_log.player_name) {
@@ -442,7 +443,7 @@ impl NewSupplyInfo {
     pub fn from_supply_info_log(
         mission_id: i32,
         player_id_map: &mut HashMap<String, i16>,
-        db: &mut PgConnection,
+        db: &mut DbConn,
         supply_info_log: LogSupplyInfo,
     ) -> Result<NewSupplyInfo, DbError> {
         let player_id = match player_id_map.get(&supply_info_log.player_name) {
@@ -476,7 +477,7 @@ impl NewSupplyInfo {
     }
 }
 
-pub fn load_mission(log: LogContent, db: &mut PgConnection) -> Result<(), DbError> {
+pub fn load_mission(log: LogContent, db: &mut DbConn) -> Result<(), DbError> {
     let player_list: Vec<Player> = player::table.load(db).map_err(|e| {
         DbError::UnexpectedError(format!(
             "load_mission: db error while fetching player: {}",

@@ -1,8 +1,9 @@
 use crate::db::schema::*;
 use diesel::prelude::*;
 use log::info;
+use crate::DbConn;
 
-pub fn delete_mission(db_conn: &mut PgConnection, mission_id: i32) -> Result<(), String> {
+pub fn delete_mission(db_conn: &mut DbConn, mission_id: i32) -> Result<(), String> {
     info!("deleting mission {}", mission_id);
 
     diesel::delete(damage_info::table.filter(damage_info::mission_id.eq(mission_id)))

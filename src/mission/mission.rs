@@ -218,25 +218,20 @@ fn generate_mission_damage(
             .map(|(k, v)| (k.clone(), v.total_amount))
             .collect::<HashMap<_, _>>();
 
+        let clone_inner_kv = |x: &HashMap<&String, HashMap<&String, f64>>| {
+            x.get(player_name)
+                .map(|ff_map| {
+                    ff_map
+                        .iter()
+                        .map(|(k, v)| ((*k).clone(), *v))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
         let ff_data = PlayerFriendlyFireInfo {
-            cause: ff_causer_taker_map
-                .get(player_name)
-                .map(|ff_map| {
-                    ff_map
-                        .iter()
-                        .map(|(k, v)| ((*k).clone(), *v))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            take: ff_taker_causer_map
-                .get(player_name)
-                .map(|ff_map| {
-                    ff_map
-                        .iter()
-                        .map(|(k, v)| ((*k).clone(), *v))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            cause: clone_inner_kv(&ff_causer_taker_map),
+            take: clone_inner_kv(&ff_taker_causer_map),
         };
 
         let supply_count = target_mission
