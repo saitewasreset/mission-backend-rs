@@ -15,6 +15,31 @@ pub struct DeltaData<T: Serialize> {
     total: T,
 }
 
+impl<T: Serialize> DeltaData<T> {
+    pub fn new(prev: T, recent: T, total: T) -> Self {
+        DeltaData {
+            prev,
+            recent,
+            total,
+        }
+    }
+
+    pub fn from_slice<S, I, F>(slice: S, prev_count: usize, f: F) -> Self
+    where
+        S: AsRef<[I]>,
+        F: Fn(std::slice::Iter<I>) -> T,
+    {
+        let prev_part = &slice.as_ref()[0..prev_count];
+        let recent_part = &slice.as_ref()[prev_count..];
+
+        let prev_value = f(prev_part.iter());
+        let recent_value = f(recent_part.iter());
+        let total_value = f(slice.as_ref().iter());
+
+        DeltaData::new(prev_value, recent_value, total_value)
+    }
+}
+
 #[derive(Serialize)]
 pub struct GeneralInfo {
     #[serde(rename = "gameCount")]
