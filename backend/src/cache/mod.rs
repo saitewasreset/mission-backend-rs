@@ -26,7 +26,7 @@ async fn update_mission_raw_cache(
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -39,7 +39,7 @@ async fn update_mission_kpi_cache(
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -52,7 +52,7 @@ async fn update_global_kpi_state(
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -65,7 +65,7 @@ async fn get_cache_status(
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
 ) -> Json<APIResponse<APICacheStatus>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 

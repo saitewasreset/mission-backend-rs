@@ -789,7 +789,7 @@ async fn get_mission_kpi_full(
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
 ) -> Json<APIResponse<Vec<MissionKPIInfoFull>>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 

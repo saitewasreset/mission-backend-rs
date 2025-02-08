@@ -22,7 +22,7 @@ pub async fn load_mission(
     app_state: Data<AppState>,
     db_pool: Data<DbPool>,
 ) -> Json<APIResponse<LoadResult>> {
-    if !app_state.check_access_token(&requests) {
+    if !app_state.check_session(&requests) {
         return Json(APIResponse::unauthorized());
     }
 

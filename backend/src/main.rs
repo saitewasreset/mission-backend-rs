@@ -3,7 +3,7 @@ use actix_web::{web, App, HttpServer};
 use diesel::{Connection, PgConnection};
 use env_logger::Env;
 use log::{error, info, warn};
-use mission_backend_rs::cache;
+use mission_backend_rs::{cache, check_session, login};
 use mission_backend_rs::damage;
 use mission_backend_rs::general;
 use mission_backend_rs::get_mapping;
@@ -122,6 +122,8 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(echo_heartbeat)
                     .service(get_mapping)
+                    .service(login)
+                    .service(check_session)
                     .service(web::scope("/mission").configure(mission::scoped_config))
                     .service(web::scope("/admin").configure(admin::scoped_config))
                     .service(web::scope("/cache").configure(cache::scoped_config))

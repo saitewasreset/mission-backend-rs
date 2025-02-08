@@ -26,7 +26,7 @@ async fn load_mapping(
     cache_manager: Data<CacheManager>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&requests) {
+    if !app_state.check_session(&requests) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -61,7 +61,7 @@ async fn load_watchlist(
     db_pool: Data<DbPool>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&requests) {
+    if !app_state.check_session(&requests) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -135,7 +135,7 @@ async fn load_kpi(
     cache_manager: Data<CacheManager>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&requests) {
+    if !app_state.check_session(&requests) {
         return Json(APIResponse::unauthorized());
     }
 
@@ -169,7 +169,7 @@ async fn api_delete_mission(
     db_pool: Data<DbPool>,
     body: Bytes,
 ) -> Json<APIResponse<()>> {
-    if !app_state.check_access_token(&requests) {
+    if !app_state.check_session(&requests) {
         return Json(APIResponse::unauthorized());
     }
 

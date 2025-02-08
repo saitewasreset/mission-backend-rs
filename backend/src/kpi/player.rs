@@ -154,7 +154,7 @@ async fn get_player_kpi(
     app_state: Data<AppState>,
     request: HttpRequest,
 ) -> Json<APIResponse<HashMap<String, PlayerKPIInfo>>> {
-    if !app_state.check_access_token(&request) {
+    if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 
