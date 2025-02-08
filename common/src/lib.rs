@@ -183,7 +183,7 @@ impl<T: Serialize> APIResponse<T> {
     pub fn unauthorized() -> Self {
         APIResponse {
             code: 403,
-            message: "Sorry, but this was meant to be a private game: invalid access token"
+            message: "Sorry, but this was meant to be a private game: invalid access token or session id"
                 .to_string(),
             data: None,
         }
