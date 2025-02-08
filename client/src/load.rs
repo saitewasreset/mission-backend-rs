@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::Display;
 use encoding_rs::{DecoderResult, UTF_16LE, UTF_8};
 use regex::Regex;
 use std::io::Write;
@@ -5,6 +7,24 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time;
 use common::mission_log::{LogContent, LogDamageInfo, LogKillInfo, LogMissionInfo, LogPlayerInfo, LogResourceInfo, LogSupplyInfo};
+use crate::format_size;
+
+#[derive(Debug)]
+pub enum LoadError {
+    IOError(std::io::Error),
+    ParseError(String),
+}
+
+impl Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::IOError(e) => write!(f, "IOError: {}", e),
+            LoadError::ParseError(e) => write!(f, "ParseError: {}", e),
+        }
+    }
+}
+
+impl Error for LoadError {}
 
 const MAX_LOG_LENGTH: usize = 64 * 1024 * 1024;
 
@@ -32,11 +52,9 @@ fn compress(data: &[u8]) -> Vec<u8> {
     compressed
 }
 
-fn get_log_file_list(base_path: &Path) -> Vec<PathBuf> {
+fn get_log_file_list(base_path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     let re = Regex::new("MissionMonitor_([0-9]+).txt").unwrap();
-    std::fs::read_dir(base_path)
-        .unwrap()
-        .into_iter()
+    let r = std::fs::read_dir(base_path)?
         .filter(|r| {
             re.is_match(
                 r.as_ref()
@@ -48,107 +66,9 @@ fn get_log_file_list(base_path: &Path) -> Vec<PathBuf> {
             )
         })
         .map(|r| r.unwrap().path())
-        .collect()
-}
+        .collect();
 
-fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, String> {
-    let file_path_list = get_log_file_list(base_path);
-
-    let mut parsed_mission_list = Vec::new();
-    for file_path in file_path_list {
-        parsed_mission_list.push(get_file_content_parted(&file_path).map_err(|e| {
-            format!(
-                "cannot parse log: {}: {}",
-                &file_path.as_os_str().to_str().unwrap(),
-                e
-            )
-        })?);
-    }
-
-    parsed_mission_list.sort_unstable_by(|a, b| {
-        a.mission_info
-            .begin_timestamp
-            .cmp(&b.mission_info.begin_timestamp)
-    });
-
-    let mut deep_dive_mission_list = Vec::new();
-
-    for mission in &parsed_mission_list {
-        let first_player_join_time = mission
-            .player_info
-            .iter()
-            .map(|p| p.join_mission_time)
-            .min()
-            .unwrap();
-
-        if first_player_join_time > 0 {
-            deep_dive_mission_list.push(mission.mission_info.begin_timestamp);
-        }
-    }
-
-    for i in 0..parsed_mission_list.len() {
-        let list_ptr = parsed_mission_list.as_mut_ptr();
-
-        // SAFETY: 0 <= i < parsed_mission_list.len()
-
-        let current_mission = unsafe { &mut *list_ptr.add(i) };
-
-        let prev_mission = match i {
-            0 => None,
-            // SAFETY:
-            // 1. 0 <= x - 1 < parsed_mission_list.len()
-            // 2. x - 1 = i - 1 != i
-            x => unsafe { Some(&mut *list_ptr.add(x - 1)) },
-        };
-
-        // 对于深潜，第一层对应的first_player_join_time为0，而二、三层不为0
-        // 对于普通深潜，每一层的难度都显示为0.75（3）
-        if deep_dive_mission_list
-            .binary_search(&current_mission.mission_info.begin_timestamp)
-            .is_ok()
-        {
-            // 若当前任务first_player_join_time不为0，但前一任务为0，说明当前是第二层，前一任务是第一层
-            // 若当前任务first_player_join_time不为0，前一任务也不为0，说明当前是第三层，前一任务是第二层
-            // 注：除非在第一层手动放弃任务，否则不论第二层是否胜利，都会有第二层的数据
-            // 若在第一层手动放弃任务，则第一层无法识别为深潜
-            if let Some(prev_mission) = prev_mission {
-                match deep_dive_mission_list
-                    .binary_search(&prev_mission.mission_info.begin_timestamp)
-                {
-                    Ok(_) => {
-                        // 前一层是第二层，当前是第三层
-                        if prev_mission.mission_info.hazard_id == 3
-                            || prev_mission.mission_info.hazard_id == 101
-                        {
-                            // 普通深潜
-                            prev_mission.mission_info.hazard_id = 101;
-                            current_mission.mission_info.hazard_id = 102;
-                        } else {
-                            // 精英深潜
-                            prev_mission.mission_info.hazard_id = 104;
-                            current_mission.mission_info.hazard_id = 105;
-                        }
-                    }
-                    Err(_) => {
-                        // 前一层是第一层，当前是第二层
-                        if prev_mission.mission_info.hazard_id == 3
-                            || prev_mission.mission_info.hazard_id == 100
-                        {
-                            // 普通深潜
-                            prev_mission.mission_info.hazard_id = 100;
-                            current_mission.mission_info.hazard_id = 101;
-                        } else {
-                            // 精英深潜
-                            prev_mission.mission_info.hazard_id = 103;
-                            current_mission.mission_info.hazard_id = 104;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(parsed_mission_list)
+    Ok(r)
 }
 
 fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::error::Error>> {
@@ -359,10 +279,102 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     // Identify Deep Dive in get_mission_list
 }
 
-fn format_size(size: usize) -> String {
-    match size {
-        0..1024 => format!("{}B", size),
-        1024..1048576 => format!("{:.2}KiB", size as f64 / 1024.0),
-        1048576.. => format!("{:.2}MiB", size as f64 / (1024.0 * 1024.0)),
+fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, LoadError> {
+    let file_path_list = get_log_file_list(base_path).map_err(LoadError::IOError)?;
+
+    let mut parsed_mission_list = Vec::new();
+    for file_path in file_path_list {
+        parsed_mission_list.push(get_file_content_parted(&file_path).map_err(|e| {
+            format!(
+                "cannot parse log: {}: {}",
+                &file_path.as_os_str().to_str().unwrap(),
+                e
+            )
+        }).map_err(LoadError::ParseError)?);
     }
+
+    parsed_mission_list.sort_unstable_by(|a, b| {
+        a.mission_info
+            .begin_timestamp
+            .cmp(&b.mission_info.begin_timestamp)
+    });
+
+    let mut deep_dive_mission_list = Vec::new();
+
+    for mission in &parsed_mission_list {
+        let first_player_join_time = mission
+            .player_info
+            .iter()
+            .map(|p| p.join_mission_time)
+            .min()
+            .unwrap();
+
+        if first_player_join_time > 0 {
+            deep_dive_mission_list.push(mission.mission_info.begin_timestamp);
+        }
+    }
+
+    for i in 0..parsed_mission_list.len() {
+        let list_ptr = parsed_mission_list.as_mut_ptr();
+
+        // SAFETY: 0 <= i < parsed_mission_list.len()
+
+        let current_mission = unsafe { &mut *list_ptr.add(i) };
+
+        let prev_mission = match i {
+            0 => None,
+            // SAFETY:
+            // 1. 0 <= x - 1 < parsed_mission_list.len()
+            // 2. x - 1 = i - 1 != i
+            x => unsafe { Some(&mut *list_ptr.add(x - 1)) },
+        };
+
+        // 对于深潜，第一层对应的first_player_join_time为0，而二、三层不为0
+        // 对于普通深潜，每一层的难度都显示为0.75（3）
+        if deep_dive_mission_list
+            .binary_search(&current_mission.mission_info.begin_timestamp)
+            .is_ok()
+        {
+            // 若当前任务first_player_join_time不为0，但前一任务为0，说明当前是第二层，前一任务是第一层
+            // 若当前任务first_player_join_time不为0，前一任务也不为0，说明当前是第三层，前一任务是第二层
+            // 注：除非在第一层手动放弃任务，否则不论第二层是否胜利，都会有第二层的数据
+            // 若在第一层手动放弃任务，则第一层无法识别为深潜
+            if let Some(prev_mission) = prev_mission {
+                match deep_dive_mission_list
+                    .binary_search(&prev_mission.mission_info.begin_timestamp)
+                {
+                    Ok(_) => {
+                        // 前一层是第二层，当前是第三层
+                        if prev_mission.mission_info.hazard_id == 3
+                            || prev_mission.mission_info.hazard_id == 101
+                        {
+                            // 普通深潜
+                            prev_mission.mission_info.hazard_id = 101;
+                            current_mission.mission_info.hazard_id = 102;
+                        } else {
+                            // 精英深潜
+                            prev_mission.mission_info.hazard_id = 104;
+                            current_mission.mission_info.hazard_id = 105;
+                        }
+                    }
+                    Err(_) => {
+                        // 前一层是第一层，当前是第二层
+                        if prev_mission.mission_info.hazard_id == 3
+                            || prev_mission.mission_info.hazard_id == 100
+                        {
+                            // 普通深潜
+                            prev_mission.mission_info.hazard_id = 100;
+                            current_mission.mission_info.hazard_id = 101;
+                        } else {
+                            // 精英深潜
+                            prev_mission.mission_info.hazard_id = 103;
+                            current_mission.mission_info.hazard_id = 104;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(parsed_mission_list)
 }

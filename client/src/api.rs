@@ -3,14 +3,20 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::error::Error;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use common::{APIResponse, Mapping};
 use common::kpi::KPIConfig;
+use common::mission::APIMission;
+use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 
 pub enum API {
     LoadMapping,
     LoadWatchList,
     LoadKPI,
     DeleteMission,
+    APIMissionList,
+    Login,
+    CheckSession,
 }
 
 impl API {
@@ -20,6 +26,9 @@ impl API {
             API::LoadWatchList => format!("{}/admin/load_watchlist", api_endpoint),
             API::LoadKPI => format!("{}/admin/load_kpi", api_endpoint),
             API::DeleteMission => format!("{}/admin/delete_mission", api_endpoint),
+            API::APIMissionList => format!("{}/mission/api_mission_list", api_endpoint),
+            API::Login => format!("{}/login", api_endpoint),
+            API::CheckSession => format!("{}/check_session", api_endpoint),
         }
     }
 }
@@ -30,57 +39,16 @@ pub enum APIResult<T: DeserializeOwned> {
     NetworkError(Box<dyn Error>),
 }
 
-impl<T, NE> From<Result<APIResponse<T>, NE>> for APIResult<T>
+impl<T> From<reqwest::Result<reqwest::blocking::Response>> for APIResult<T>
 where
     T: Serialize + DeserializeOwned,
-    NE: Error + 'static,
 {
-    fn from(result: Result<APIResponse<T>, NE>) -> Self {
-        match result {
-            Ok(APIResponse { code, message, data }) => {
-                if code == 200 {
-                    APIResult::Success(data.unwrap())
-                } else {
-                    APIResult::APIError(code, message)
-                }
-            }
-            Err(e) => APIResult::NetworkError(Box::new(e)),
-        }
-    }
-}
-
-struct NotAuthenticated;
-struct Authenticated;
-
-pub struct MissionMonitorClient<T> {
-    client: Client,
-    api_endpoint: String,
-    _data: PhantomData<T>,
-}
-
-impl<T> MissionMonitorClient<T> {
-    fn get_url_for_api(&self, api: API) -> String {
-        api.get_url(&self.api_endpoint)
-    }
-
-    fn post<Data, Return>(&mut self, api: API, data: Data) -> APIResult<Return>
-    where
-        Data: Serialize + DeserializeOwned,
-        Return: Serialize + DeserializeOwned,
-    {
-        let serialized = serde_json::to_vec(&data).unwrap();
-
-        let response = self
-            .client
-            .post(&self.get_url_for_api(api))
-            .body(serialized)
-            .send();
-
+    fn from(response: reqwest::Result<reqwest::blocking::Response>) -> Self {
         match response {
             Ok(response) => {
                 match response.bytes() {
                     Ok(bytes) => {
-                        match serde_json::from_slice::<APIResponse<Return>>(&bytes[..]) {
+                        match serde_json::from_slice::<APIResponse<T>>(&bytes[..]) {
                             Ok(api_response) => {
                                 if api_response.code == 200 {
                                     APIResult::Success(api_response.data.unwrap())
@@ -101,7 +69,103 @@ impl<T> MissionMonitorClient<T> {
     }
 }
 
-impl MissionMonitorClient<NotAuthenticated> {}
+pub struct NotAuthenticated;
+pub struct Authenticated;
+
+pub struct MissionMonitorClient<T> {
+    client: Client,
+    api_endpoint: String,
+    _data: PhantomData<T>,
+}
+
+impl<T> MissionMonitorClient<T> {
+    pub fn new(api_endpoint: String) -> MissionMonitorClient<NotAuthenticated> {
+        MissionMonitorClient {
+            client: Client::new(),
+            api_endpoint,
+            _data: PhantomData,
+        }
+    }
+    fn get_url_for_api(&self, api: API) -> String {
+        api.get_url(&self.api_endpoint)
+    }
+
+    fn get<Return>(&mut self, api: API) -> APIResult<Return>
+    where
+        Return: Serialize + DeserializeOwned,
+    {
+        self.client.get(self.get_url_for_api(api)).send().into()
+    }
+
+    fn post<Data, Return>(&mut self, api: API, data: Data) -> APIResult<Return>
+    where
+        Data: Serialize + DeserializeOwned,
+        Return: Serialize + DeserializeOwned,
+    {
+        let serialized = serde_json::to_vec(&data).unwrap();
+
+        let response = self
+            .client
+            .post(self.get_url_for_api(api))
+            .body(serialized)
+            .send();
+
+        response.into()
+    }
+
+    pub fn get_api_mission_list(&mut self) -> APIResult<Vec<APIMission>> {
+        self.get(API::APIMissionList)
+    }
+}
+
+impl MissionMonitorClient<NotAuthenticated> {
+    pub fn login(mut self, access_token: String) -> Result<MissionMonitorClient<Authenticated>, (APIResult<()>, Self)> {
+        let result: APIResult<()> = self.post(API::Login, access_token);
+
+        match result {
+            APIResult::Success(()) => {
+                Ok(MissionMonitorClient {
+                    client: self.client,
+                    api_endpoint: self.api_endpoint,
+                    _data: PhantomData,
+                })
+            }
+            x => {
+                Err((x, self))
+            }
+        }
+    }
+
+    pub fn load_cookie(mut self, cookie_storage_content: &[u8]) -> Result<MissionMonitorClient<Authenticated>, (String, Self)> {
+        match CookieStore::load_json(cookie_storage_content) {
+            Ok(cookie_store) => {
+                self.client = reqwest::blocking::Client::builder()
+                    .cookie_provider(Arc::new(CookieStoreMutex::new(cookie_store)))
+                    .build()
+                    .unwrap();
+
+                match self.get(API::CheckSession) {
+                    APIResult::Success(()) => {
+                        Ok(MissionMonitorClient {
+                            client: self.client,
+                            api_endpoint: self.api_endpoint,
+                            _data: PhantomData,
+                        })
+                    }
+                    APIResult::APIError(_, message) => {
+                        Err((message, self))
+                    }
+                    APIResult::NetworkError(e) => {
+                        Err((format!("network error: {}", e), self))
+                    }
+                }
+            }
+            Err(e) => {
+                Err((format!("cannot parse stored cookie: {}", e), self))
+            }
+        }
+    }
+}
 
 impl MissionMonitorClient<Authenticated> {
     pub fn load_mapping(&mut self, mapping: Mapping) -> APIResult<()> {
