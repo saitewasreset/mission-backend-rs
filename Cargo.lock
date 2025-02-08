@@ -474,6 +474,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "phf",
+ "serde",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -560,27 +569,6 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
-]
-
-[[package]]
-name = "csv"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acdc4883a9c96732e4733212c01447ebd805833b7275a73ca3ee080fd77afdaf"
-dependencies = [
- "csv-core",
- "itoa",
- "ryu",
- "serde",
-]
-
-[[package]]
-name = "csv-core"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5efa2b3d7902f4b634a20cae3c9c4e6209dc4779feb6863329607560143efa70"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -1492,18 +1480,30 @@ dependencies = [
  "actix-files",
  "actix-web",
  "chrono",
- "csv",
+ "common",
  "derive_more 1.0.0",
  "diesel",
  "diesel_migrations",
  "dotenvy",
- "encoding_rs",
  "env_logger",
  "log",
  "phf",
  "redis",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "zstd",
+]
+
+[[package]]
+name = "mission-monitor-tools"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "encoding_rs",
  "regex",
  "reqwest",
+ "reqwest_cookie_store",
  "rmp-serde",
  "serde",
  "serde_json",
@@ -1920,6 +1920,20 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "windows-registry",
+]
+
+[[package]]
+name = "reqwest_cookie_store"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0b36498c7452f11b1833900f31fbb01fc46be20992a50269c88cf59d79f54e9"
+dependencies = [
+ "bytes",
+ "cookie_store",
+ "reqwest",
+ "serde",
+ "serde_derive",
+ "url",
 ]
 
 [[package]]
