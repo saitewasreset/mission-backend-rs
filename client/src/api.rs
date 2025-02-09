@@ -2,14 +2,18 @@ use reqwest::blocking::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::error::Error;
+use std::fs::File;
 use std::marker::PhantomData;
+use std::path::Path;
 use std::sync::Arc;
 use common::{APIResponse, Mapping};
 use common::kpi::KPIConfig;
 use common::mission::APIMission;
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
+use crate::ClientError;
 
 pub enum API {
+    LoadMission,
     LoadMapping,
     LoadWatchList,
     LoadKPI,
@@ -22,6 +26,7 @@ pub enum API {
 impl API {
     pub fn get_url(&self, api_endpoint: &str) -> String {
         match self {
+            API::LoadMission => format!("{}/mission/load_mission", api_endpoint),
             API::LoadMapping => format!("{}/admin/load_mapping", api_endpoint),
             API::LoadWatchList => format!("{}/admin/load_watchlist", api_endpoint),
             API::LoadKPI => format!("{}/admin/load_kpi", api_endpoint),
@@ -75,6 +80,7 @@ pub struct Authenticated;
 pub struct MissionMonitorClient<T> {
     client: Client,
     api_endpoint: String,
+    cookie_provider: Arc<CookieStoreMutex>,
     _data: PhantomData<T>,
 }
 
@@ -82,6 +88,7 @@ impl<T> MissionMonitorClient<T> {
     pub fn new(api_endpoint: String) -> MissionMonitorClient<NotAuthenticated> {
         MissionMonitorClient {
             client: Client::new(),
+            cookie_provider: Arc::new(CookieStoreMutex::new(CookieStore::default())),
             api_endpoint,
             _data: PhantomData,
         }
@@ -126,6 +133,7 @@ impl MissionMonitorClient<NotAuthenticated> {
             APIResult::Success(()) => {
                 Ok(MissionMonitorClient {
                     client: self.client,
+                    cookie_provider: self.cookie_provider,
                     api_endpoint: self.api_endpoint,
                     _data: PhantomData,
                 })
@@ -136,32 +144,26 @@ impl MissionMonitorClient<NotAuthenticated> {
         }
     }
 
-    pub fn load_cookie(mut self, cookie_storage_content: &[u8]) -> Result<MissionMonitorClient<Authenticated>, (String, Self)> {
+    pub fn load_cookie(mut self, cookie_storage_content: &[u8]) -> Result<MissionMonitorClient<Authenticated>, (ClientError, Self)> {
         match CookieStore::load_json(cookie_storage_content) {
             Ok(cookie_store) => {
-                self.client = reqwest::blocking::Client::builder()
-                    .cookie_provider(Arc::new(CookieStoreMutex::new(cookie_store)))
+                self.cookie_provider = Arc::new(CookieStoreMutex::new(cookie_store));
+
+                self.client = Client::builder()
+                    .cookie_provider(Arc::clone(&self.cookie_provider))
                     .build()
                     .unwrap();
 
-                match self.get(API::CheckSession) {
-                    APIResult::Success(()) => {
-                        Ok(MissionMonitorClient {
-                            client: self.client,
-                            api_endpoint: self.api_endpoint,
-                            _data: PhantomData,
-                        })
-                    }
-                    APIResult::APIError(_, message) => {
-                        Err((message, self))
-                    }
-                    APIResult::NetworkError(e) => {
-                        Err((format!("network error: {}", e), self))
-                    }
-                }
+
+                Ok(MissionMonitorClient {
+                    client: self.client,
+                    cookie_provider: self.cookie_provider,
+                    api_endpoint: self.api_endpoint,
+                    _data: PhantomData,
+                })
             }
             Err(e) => {
-                Err((format!("cannot parse stored cookie: {}", e), self))
+                Err((ClientError::ParseError(format!("cannot parse stored cookie: {}", e)), self))
             }
         }
     }
@@ -182,5 +184,19 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn delete_mission(&mut self, mission_id_list: Vec<i32>) -> APIResult<()> {
         self.post(API::DeleteMission, mission_id_list)
+    }
+
+    pub fn load_mission(&mut self, payload: Vec<u8>) -> APIResult<()> {
+        self.post(API::LoadMission, payload)
+    }
+
+    pub fn save_cookie(&self, cookie_path: impl AsRef<Path>) -> Result<(), ClientError> {
+        let mut save_file = File::open(cookie_path).map_err(|e| ClientError::InputError(format!("cannot open cookie storage file: {}", e)))?;
+        self.cookie_provider.lock().unwrap().save_json(&mut save_file).map_err(|e| ClientError::InputError(format!("cannot save cookie storage: {}", e)))?;
+        Ok(())
+    }
+
+    pub fn check_session(&mut self) -> APIResult<()> {
+        self.get(API::CheckSession)
     }
 }
