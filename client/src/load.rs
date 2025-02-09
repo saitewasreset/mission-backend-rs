@@ -28,7 +28,7 @@ impl Error for LoadError {}
 
 const MAX_LOG_LENGTH: usize = 64 * 1024 * 1024;
 
-fn compress(data: &[u8]) -> Vec<u8> {
+pub fn compress(data: &[u8]) -> Vec<u8> {
     println!("Serialized len = {}", format_size(data.len()));
 
     let compressed = Vec::with_capacity(data.len());
@@ -37,7 +37,7 @@ fn compress(data: &[u8]) -> Vec<u8> {
 
     let mut encoder = zstd::Encoder::new(compressed, 15).unwrap();
 
-    encoder.write_all(&data).unwrap();
+    encoder.write_all(data).unwrap();
     let mut compressed = encoder.finish().unwrap();
 
     let finish = time::Instant::now();
@@ -52,7 +52,7 @@ fn compress(data: &[u8]) -> Vec<u8> {
     compressed
 }
 
-fn get_log_file_list(base_path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+fn get_log_file_list(base_path: impl AsRef<Path>) -> Result<Vec<PathBuf>, std::io::Error> {
     let re = Regex::new("MissionMonitor_([0-9]+).txt").unwrap();
     let r = std::fs::read_dir(base_path)?
         .filter(|r| {
@@ -71,8 +71,47 @@ fn get_log_file_list(base_path: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     Ok(r)
 }
 
-fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::error::Error>> {
-    let raw_file_content = std::fs::read(file_path)?;
+fn process_log_segment<'a, E, T>(log_segment_str: &'a str, segment_name: &str) -> Result<Vec<T>, String>
+where
+    E: Display,
+    T: TryFrom<&'a str, Error=E>,
+{
+    let mut result: Vec<T> = Vec::new();
+
+    for player_info_line in log_segment_str.lines() {
+        if player_info_line.trim().is_empty() {
+            continue;
+        }
+        result.push(
+            player_info_line
+                .try_into()
+                .map_err(|e| format!("load {}: {}", segment_name, e))?,
+        );
+    }
+
+    Ok(result)
+}
+
+fn combine_range_damage(range_begin_idx: usize, range_end_idx: usize, damage_info: &[LogDamageInfo]) -> LogDamageInfo {
+    let range_begin_item = &damage_info[range_begin_idx];
+    let damage_sum = damage_info[range_begin_idx..range_end_idx]
+        .iter()
+        .map(|item| item.damage)
+        .sum::<f64>();
+
+    LogDamageInfo {
+        mission_time: range_begin_item.mission_time,
+        damage: damage_sum,
+        taker: range_begin_item.taker.clone(),
+        causer: range_begin_item.causer.clone(),
+        weapon: range_begin_item.weapon.clone(),
+        causer_type: range_begin_item.causer_type,
+        taker_type: range_begin_item.taker_type,
+    }
+}
+
+fn get_file_content_parted(file_path: impl AsRef<Path>) -> Result<LogContent, Box<dyn Error>> {
+    let raw_file_content = std::fs::read(file_path.as_ref())?;
 
     let mut file_content = String::with_capacity(MAX_LOG_LENGTH);
 
@@ -88,7 +127,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
         if let DecoderResult::Malformed(_, _) = result {
             panic!(
                 "Cannot decode input: {} with UTF-16-LE",
-                file_path.file_name().unwrap().to_str().unwrap()
+                file_path.as_ref().file_name().unwrap().to_str().unwrap()
             );
         }
     } else {
@@ -101,7 +140,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
         if let DecoderResult::Malformed(_, _) = result {
             panic!(
                 "Cannot decode input: {} with UTF-8",
-                file_path.file_name().unwrap().to_str().unwrap()
+                file_path.as_ref().file_name().unwrap().to_str().unwrap()
             );
         }
     }
@@ -115,86 +154,32 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
 
     let player_info_part = file_part_list[1];
 
-    let mut player_info: Vec<LogPlayerInfo> = Vec::new();
-
-    for player_info_line in player_info_part.lines() {
-        if player_info_line.trim().len() == 0 {
-            continue;
-        }
-        player_info.push(
-            player_info_line
-                .try_into()
-                .map_err(|e| format!("load player info: {}", e))?,
-        );
-    }
+    let mut player_info: Vec<LogPlayerInfo> = process_log_segment(player_info_part, "player info")?;
 
     let damage_info_part = file_part_list[2];
 
-    let mut damage_info: Vec<LogDamageInfo> = Vec::new();
-
-    for damage_info_line in damage_info_part.lines() {
-        if damage_info_line.trim().len() == 0 {
-            continue;
-        }
-        damage_info.push(
-            damage_info_line
-                .try_into()
-                .map_err(|e| format!("load player info: {}", e))?,
-        );
-    }
+    let mut damage_info: Vec<LogDamageInfo> = process_log_segment(damage_info_part, "damage info")?;
 
     let mut range_begin_idx: usize = 0;
-    let mut range_begin_item = &damage_info[range_begin_idx];
 
     let mut combined_damage_info: Vec<LogDamageInfo> = Vec::with_capacity(damage_info.len());
 
     for (i, current_damage_info) in damage_info.iter().enumerate() {
-        if !current_damage_info.combine_eq(range_begin_item) {
-            let range_end_idx = i;
-
-            let damage_sum = damage_info[range_begin_idx..range_end_idx]
-                .iter()
-                .map(|item| item.damage)
-                .sum::<f64>();
-
-            combined_damage_info.push(LogDamageInfo {
-                mission_time: range_begin_item.mission_time,
-                damage: damage_sum,
-                taker: range_begin_item.taker.clone(),
-                causer: range_begin_item.causer.clone(),
-                weapon: range_begin_item.weapon.clone(),
-                causer_type: range_begin_item.causer_type,
-                taker_type: range_begin_item.taker_type,
-            });
+        if !current_damage_info.combine_eq(&damage_info[range_begin_idx]) {
+            combined_damage_info.push(combine_range_damage(range_begin_idx, i, &damage_info));
 
             range_begin_idx = i;
-            range_begin_item = &damage_info[range_begin_idx];
         }
     }
 
-    let range_end_idx = damage_info.len();
-
-    let damage_sum = damage_info[range_begin_idx..range_end_idx]
-        .iter()
-        .map(|item| item.damage)
-        .sum::<f64>();
-
-    combined_damage_info.push(LogDamageInfo {
-        mission_time: range_begin_item.mission_time,
-        damage: damage_sum,
-        taker: range_begin_item.taker.clone(),
-        causer: range_begin_item.causer.clone(),
-        weapon: range_begin_item.weapon.clone(),
-        causer_type: range_begin_item.causer_type,
-        taker_type: range_begin_item.taker_type,
-    });
+    combined_damage_info.push(combine_range_damage(range_begin_idx, damage_info.len(), &damage_info));
 
     let kill_info_part = file_part_list[3];
 
     let mut kill_info: Vec<LogKillInfo> = Vec::new();
 
     for kill_info_line in kill_info_part.lines() {
-        if kill_info_line.trim().len() == 0 {
+        if kill_info_line.trim().is_empty() {
             continue;
         }
         kill_info.push(
@@ -209,7 +194,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut resource_info: Vec<LogResourceInfo> = Vec::new();
 
     for resource_info_line in resource_info_part.lines() {
-        if resource_info_line.trim().len() == 0 {
+        if resource_info_line.trim().is_empty() {
             continue;
         }
         resource_info.push(
@@ -223,7 +208,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     let mut supply_info: Vec<LogSupplyInfo> = Vec::new();
 
     for supply_info_line in supply_info_part.lines() {
-        if supply_info_line.trim().len() == 0 {
+        if supply_info_line.trim().is_empty() {
             continue;
         }
         supply_info.push(
@@ -279,7 +264,7 @@ fn get_file_content_parted(file_path: &Path) -> Result<LogContent, Box<dyn std::
     // Identify Deep Dive in get_mission_list
 }
 
-fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, LoadError> {
+pub fn parse_mission_log(base_path: impl AsRef<Path>) -> Result<Vec<LogContent>, LoadError> {
     let file_path_list = get_log_file_list(base_path).map_err(LoadError::IOError)?;
 
     let mut parsed_mission_list = Vec::new();
@@ -315,18 +300,11 @@ fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, LoadError> {
     }
 
     for i in 0..parsed_mission_list.len() {
-        let list_ptr = parsed_mission_list.as_mut_ptr();
-
-        // SAFETY: 0 <= i < parsed_mission_list.len()
-
-        let current_mission = unsafe { &mut *list_ptr.add(i) };
+        let current_mission = &parsed_mission_list[i];
 
         let prev_mission = match i {
             0 => None,
-            // SAFETY:
-            // 1. 0 <= x - 1 < parsed_mission_list.len()
-            // 2. x - 1 = i - 1 != i
-            x => unsafe { Some(&mut *list_ptr.add(x - 1)) },
+            x => Some(&parsed_mission_list[x - 1]),
         };
 
         // 对于深潜，第一层对应的first_player_join_time为0，而二、三层不为0
@@ -345,30 +323,30 @@ fn parse_mission_log(base_path: &Path) -> Result<Vec<LogContent>, LoadError> {
                 {
                     Ok(_) => {
                         // 前一层是第二层，当前是第三层
-                        if prev_mission.mission_info.hazard_id == 3
-                            || prev_mission.mission_info.hazard_id == 101
+                        if prev_mission.mission_info.hazard_id.get() == 3
+                            || prev_mission.mission_info.hazard_id.get() == 101
                         {
                             // 普通深潜
-                            prev_mission.mission_info.hazard_id = 101;
-                            current_mission.mission_info.hazard_id = 102;
+                            prev_mission.mission_info.hazard_id.set(101);
+                            current_mission.mission_info.hazard_id.set(102);
                         } else {
                             // 精英深潜
-                            prev_mission.mission_info.hazard_id = 104;
-                            current_mission.mission_info.hazard_id = 105;
+                            prev_mission.mission_info.hazard_id.set(104);
+                            current_mission.mission_info.hazard_id.set(105);
                         }
                     }
                     Err(_) => {
                         // 前一层是第一层，当前是第二层
-                        if prev_mission.mission_info.hazard_id == 3
-                            || prev_mission.mission_info.hazard_id == 100
+                        if prev_mission.mission_info.hazard_id.get() == 3
+                            || prev_mission.mission_info.hazard_id.get() == 100
                         {
                             // 普通深潜
-                            prev_mission.mission_info.hazard_id = 100;
-                            current_mission.mission_info.hazard_id = 101;
+                            prev_mission.mission_info.hazard_id.set(100);
+                            current_mission.mission_info.hazard_id.set(101);
                         } else {
                             // 精英深潜
-                            prev_mission.mission_info.hazard_id = 103;
-                            current_mission.mission_info.hazard_id = 104;
+                            prev_mission.mission_info.hazard_id.set(103);
+                            current_mission.mission_info.hazard_id.set(104);
                         }
                     }
                 }

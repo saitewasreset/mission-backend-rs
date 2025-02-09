@@ -122,7 +122,7 @@ impl NewMission {
             begin_timestamp: mission_log.begin_timestamp,
             mission_time: mission_log.mission_time,
             mission_type_id,
-            hazard_id: mission_log.hazard_id,
+            hazard_id: mission_log.hazard_id.get(),
             result: mission_log.result,
             reward_credit: mission_log.reward_credit,
             total_supply_count: mission_log.total_supply_count,

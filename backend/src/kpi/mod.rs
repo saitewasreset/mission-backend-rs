@@ -7,7 +7,6 @@ use actix_web::web;
 use std::{
     collections::HashMap,
 };
-use common::kpi::CharacterKPIType;
 
 pub fn apply_weight_table(
     source: &HashMap<String, f64>,

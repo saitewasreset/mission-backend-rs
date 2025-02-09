@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -5,7 +6,7 @@ pub struct LogMissionInfo {
     pub begin_timestamp: i64,
     pub mission_time: i16,
     pub mission_type_id: String,
-    pub hazard_id: i16,
+    pub hazard_id: Cell<i16>,
     pub result: i16,
     pub reward_credit: f64,
     pub total_supply_count: i16,
@@ -182,7 +183,7 @@ impl TryFrom<&str> for LogMissionInfo {
             begin_timestamp,
             mission_time,
             mission_type_id: mission_type_id.into(),
-            hazard_id: get_hazard_id(hazard_bonus),
+            hazard_id: Cell::new(get_hazard_id(hazard_bonus)),
             result,
             reward_credit,
             total_supply_count,
