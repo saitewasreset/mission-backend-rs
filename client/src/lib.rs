@@ -6,11 +6,15 @@ use std::io::Read;
 use std::path::PathBuf;
 use clio::Input;
 use serde::de::DeserializeOwned;
+use common::cache::APICacheType;
 use crate::api::{APIResult, Authenticated, MissionMonitorClient, NotAuthenticated};
+use crate::cache_status::print_cache_status;
 use crate::load::{compress, parse_mission_log, LoadError};
 
 pub mod load;
 pub mod api;
+
+pub mod cache_status;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClientConfig {
@@ -143,6 +147,23 @@ pub fn cli_load_mission(client_config: ClientConfig) -> Result<(), ClientError> 
     let compressed = compress(&serialized);
 
     Result::from(client.load_mission(compressed))?;
+
+    Ok(())
+}
+
+pub fn cli_update_cache(client_config: ClientConfig, cache_type: APICacheType) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    client.update_cache(cache_type).into()
+}
+
+
+pub fn cli_get_cache_status(client_config: ClientConfig) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let cache_status = Result::from(client.get_cache_status())?;
+
+    print_cache_status(cache_status);
 
     Ok(())
 }

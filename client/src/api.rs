@@ -10,6 +10,7 @@ use common::{APIResponse, Mapping};
 use common::kpi::KPIConfig;
 use common::mission::APIMission;
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
+use common::cache::{APICacheStatus, APICacheType};
 use crate::ClientError;
 
 pub enum API {
@@ -21,6 +22,8 @@ pub enum API {
     APIMissionList,
     Login,
     CheckSession,
+    UpdateCache,
+    GetCacheStatus,
 }
 
 impl API {
@@ -34,6 +37,8 @@ impl API {
             API::APIMissionList => format!("{}/mission/api_mission_list", api_endpoint),
             API::Login => format!("{}/login", api_endpoint),
             API::CheckSession => format!("{}/check_session", api_endpoint),
+            API::UpdateCache => format!("{}/cache/update_cache", api_endpoint),
+            API::GetCacheStatus => format!("{}/cache/get_cache_status", api_endpoint),
         }
     }
 }
@@ -198,5 +203,13 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn check_session(&mut self) -> APIResult<()> {
         self.get(API::CheckSession)
+    }
+
+    pub fn update_cache(&mut self, cache_type: APICacheType) -> APIResult<()> {
+        self.post(API::UpdateCache, cache_type)
+    }
+
+    pub fn get_cache_status(&mut self) -> APIResult<APICacheStatus> {
+        self.get(API::GetCacheStatus)
     }
 }
