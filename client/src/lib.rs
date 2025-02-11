@@ -10,11 +10,14 @@ use common::cache::APICacheType;
 use crate::api::{APIResult, Authenticated, MissionMonitorClient, NotAuthenticated};
 use crate::cache_status::print_cache_status;
 use crate::load::{compress, parse_mission_log, LoadError};
+use crate::mission_list::print_mission_list;
 
 pub mod load;
 pub mod api;
 
+pub mod formatter;
 pub mod cache_status;
+pub mod mission_list;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClientConfig {
@@ -164,6 +167,16 @@ pub fn cli_get_cache_status(client_config: ClientConfig) -> Result<(), ClientErr
     let cache_status = Result::from(client.get_cache_status())?;
 
     print_cache_status(cache_status);
+
+    Ok(())
+}
+
+pub fn cli_get_mission_list(client_config: ClientConfig, entry_limit: Option<usize>) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let api_mission_list = Result::from(client.get_api_mission_list())?;
+
+    print_mission_list(api_mission_list, entry_limit);
 
     Ok(())
 }

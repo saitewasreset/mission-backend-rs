@@ -231,3 +231,20 @@ pub struct MissionKPIInfoFull {
     #[serde(rename = "missionKPI")]
     pub mission_kpi: f64,
 }
+
+pub fn hazard_id_to_name(hazard_id: i16) -> String {
+    match hazard_id {
+        1 => "1".to_string(),
+        2 => "2".to_string(),
+        3 => "3".to_string(),
+        4 => "4".to_string(),
+        5 => "5".to_string(),
+        100 => "DD 3(1)".to_string(),
+        101 => "DD 3.5(2)".to_string(),
+        102 => "DD 3.5(3)".to_string(),
+        103 => "EDD 4.5(1)".to_string(),
+        104 => "EDD 5(2)".to_string(),
+        105 => "EDD 5.5(3)".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
