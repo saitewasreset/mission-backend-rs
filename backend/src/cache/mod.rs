@@ -2,10 +2,11 @@ pub mod kpi;
 pub mod mission;
 pub mod manager;
 
-use crate::{APIResponse, AppState};
+use crate::{api_parse_json_body, APIResponse, AppState};
 use actix_web::{get, web::{self, Data, Json}, HttpRequest};
+use actix_web::web::Bytes;
 use log::error;
-use common::cache::APICacheStatus;
+use common::cache::{APICacheStatus, APICacheType};
 use crate::cache::manager::{CacheManager, CacheType};
 
 
@@ -20,43 +21,46 @@ pub fn api_try_schedule_cache(cache_manager: &CacheManager, cache_type: CacheTyp
     }
 }
 
-#[get("/update_mission_raw")]
-async fn update_mission_raw_cache(
-    app_state: Data<AppState>,
-    cache_manager: Data<CacheManager>,
-    request: HttpRequest,
-) -> Json<APIResponse<()>> {
-    if !app_state.check_session(&request) {
-        return Json(APIResponse::unauthorized());
+pub fn api_try_schedule_cache_all(cache_manager: &CacheManager) -> APIResponse<()> {
+    match cache_manager.try_schedule_all() {
+        Ok(true) => APIResponse::ok(()),
+        Ok(false) => APIResponse::busy("cache queue is full"),
+        Err(e) => {
+            error!("{}", e);
+            APIResponse::internal_error()
+        }
     }
-
-    Json(api_try_schedule_cache(&cache_manager, CacheType::MissionRaw))
 }
 
-#[get("/update_mission_kpi_raw")]
-async fn update_mission_kpi_cache(
+#[get("/update_cache")]
+async fn update_cache(
     app_state: Data<AppState>,
     cache_manager: Data<CacheManager>,
     request: HttpRequest,
+    body: Bytes,
 ) -> Json<APIResponse<()>> {
     if !app_state.check_session(&request) {
         return Json(APIResponse::unauthorized());
     }
 
-    Json(api_try_schedule_cache(&cache_manager, CacheType::MissionKPIRaw))
-}
-
-#[get("/update_global_kpi_state")]
-async fn update_global_kpi_state(
-    app_state: Data<AppState>,
-    cache_manager: Data<CacheManager>,
-    request: HttpRequest,
-) -> Json<APIResponse<()>> {
-    if !app_state.check_session(&request) {
-        return Json(APIResponse::unauthorized());
+    if let Ok(api_cache_type) = api_parse_json_body(body) {
+        match api_cache_type {
+            APICacheType::MissionRaw => {
+                Json(api_try_schedule_cache(&cache_manager, CacheType::MissionRaw))
+            }
+            APICacheType::MissionKPIRaw => {
+                Json(api_try_schedule_cache(&cache_manager, CacheType::MissionKPIRaw))
+            }
+            APICacheType::GlobalKPIState => {
+                Json(api_try_schedule_cache(&cache_manager, CacheType::GlobalKPIState))
+            }
+            APICacheType::All => {
+                Json(api_try_schedule_cache_all(&cache_manager))
+            }
+        }
+    } else {
+        Json(APIResponse::bad_request("cannot parse payload body as json"))
     }
-
-    Json(api_try_schedule_cache(&cache_manager, CacheType::GlobalKPIState))
 }
 
 #[get("/cache_status")]
@@ -75,8 +79,6 @@ async fn get_cache_status(
 }
 
 pub fn scoped_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(update_mission_raw_cache);
-    cfg.service(update_mission_kpi_cache);
-    cfg.service(update_global_kpi_state);
+    cfg.service(update_cache);
     cfg.service(get_cache_status);
 }

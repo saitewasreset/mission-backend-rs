@@ -20,3 +20,11 @@ pub struct APICacheStatus {
     pub working: bool,
     pub items: Vec<APICacheStatusItem>,
 }
+
+#[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum APICacheType {
+    MissionRaw,
+    MissionKPIRaw,
+    GlobalKPIState,
+    All,
+}

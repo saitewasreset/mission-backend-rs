@@ -15,7 +15,8 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use actix_web::cookie::Cookie;
-use actix_web::web::Bytes;
+use actix_web::web::{Buf, Bytes};
+use log::warn;
 use common::{APIMapping, APIResponse, Mapping};
 use crate::cache::manager::CacheManager;
 use uuid::Uuid;
@@ -110,6 +111,18 @@ pub fn generate_mapping(mapping: Mapping) -> APIMapping {
         weapon: mapping.weapon_mapping,
         weapon_combine: mapping.weapon_combine,
         weapon_character: mapping.weapon_character,
+    }
+}
+
+pub fn api_parse_json_body<T: serde::de::DeserializeOwned>(
+    body: Bytes,
+) -> Result<T, String> {
+    match serde_json::from_reader(body.reader()) {
+        Ok(x) => Ok(x),
+        Err(e) => {
+            warn!("cannot parse payload body as json: {}", e);
+            Err("cannot parse payload body as json".to_string())
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 pub mod delete_mission;
 
-use crate::{db::schema::player, APIResponse, AppState, DbPool};
+use crate::{api_parse_json_body, db::schema::player, APIResponse, AppState, DbPool};
 use actix_web::{
     post,
     web::{self, Buf, Bytes, Data, Json},
@@ -211,14 +211,3 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(api_delete_mission);
 }
 
-pub fn api_parse_json_body<T: serde::de::DeserializeOwned>(
-    body: Bytes,
-) -> Result<T, String> {
-    match serde_json::from_reader(body.reader()) {
-        Ok(x) => Ok(x),
-        Err(e) => {
-            warn!("cannot parse payload body as json: {}", e);
-            Err("cannot parse payload body as json".to_string())
-        }
-    }
-}
