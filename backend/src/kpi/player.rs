@@ -3,7 +3,7 @@ use crate::cache::mission::*;
 use crate::db::models::*;
 use crate::db::schema::*;
 use common::kpi::{KPIConfig, PlayerCharacterKPIInfo, PlayerKPIInfo, PlayerMissionKPIInfo};
-use crate::mission::mission::generate_mission_kpi_full;
+use crate::mission::mission_info::generate_mission_kpi_full;
 use common::mission::MissionKPIInfoFull;
 use crate::{APIResponse, AppState, DbPool};
 use actix_web::{get, web::{self, Data, Json}, HttpRequest};

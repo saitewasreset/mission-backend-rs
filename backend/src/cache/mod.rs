@@ -13,8 +13,8 @@ pub fn api_try_schedule_cache(cache_manager: &CacheManager, cache_type: CacheTyp
     match cache_manager.try_schedule(cache_type) {
         Ok(true) => APIResponse::ok(()),
         Ok(false) => APIResponse::busy("cache queue is full"),
-        Err(()) => {
-            error!("cache manager thread is dead");
+        Err(e) => {
+            error!("{}", e);
             APIResponse::internal_error()
         }
     }

@@ -166,19 +166,19 @@ impl CacheManager {
         self.cache_context.lock().unwrap().kpi_config = Some(kpi_config);
     }
 
-    pub fn try_schedule(&self, cache_type: CacheType) -> Result<bool, ()> {
+    pub fn try_schedule(&self, cache_type: CacheType) -> Result<bool, String> {
         match self.job_tx.try_send(cache_type) {
             Ok(_) => Ok(true),
             Err(e) => {
                 match e {
                     std::sync::mpsc::TrySendError::Full(_) => Ok(false),
-                    std::sync::mpsc::TrySendError::Disconnected(_) => Err(()),
+                    std::sync::mpsc::TrySendError::Disconnected(_) => Err("cache manager thread is dead".to_string()),
                 }
             }
         }
     }
 
-    pub fn try_schedule_all(&self) -> Result<bool, ()> {
+    pub fn try_schedule_all(&self) -> Result<bool, String> {
         let cache_type_list = [CacheType::MissionRaw, CacheType::MissionKPIRaw, CacheType::GlobalKPIState];
 
         for cache_type in cache_type_list {
