@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use common::cache::APICacheType;
 use crate::api::{APIResult, Authenticated, MissionMonitorClient, NotAuthenticated};
 use crate::cache_status::print_cache_status;
-use crate::load::{compress, parse_mission_log, LoadError};
+use crate::load::{compress, load_kpi_config_from_file, load_mapping_from_file, parse_config_file_list, parse_mission_log, LoadError};
 use crate::mission_list::print_mission_list;
 
 pub mod load;
@@ -177,6 +177,42 @@ pub fn cli_get_mission_list(client_config: ClientConfig, entry_limit: Option<usi
     let api_mission_list = Result::from(client.get_api_mission_list())?;
 
     print_mission_list(api_mission_list, entry_limit);
+
+    Ok(())
+}
+
+pub fn cli_load_mapping(client_config: ClientConfig, mapping_directory: Option<PathBuf>) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let mapping_directory = mapping_directory.unwrap_or_else(|| PathBuf::from("mapping"));
+
+    let mapping = load_mapping_from_file(&mapping_directory)?;
+
+    Result::from(client.load_mapping(mapping))?;
+
+    Ok(())
+}
+
+pub fn cli_load_kpi_config(client_config: ClientConfig, kpi_config_directory: Option<PathBuf>) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let kpi_config_directory = kpi_config_directory.unwrap_or_else(|| PathBuf::from("kpi"));
+
+    let kpi_config = load_kpi_config_from_file(&kpi_config_directory)?;
+
+    Result::from(client.load_kpi(kpi_config))?;
+
+    Ok(())
+}
+
+pub fn cli_load_kpi_watchlist(client_config: ClientConfig, watchlist_path: Option<PathBuf>) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let kpi_config_directory = watchlist_path.unwrap_or_else(|| PathBuf::from("watchlist.txt"));
+
+    let watchlist = parse_config_file_list(&kpi_config_directory)?;
+
+    Result::from(client.load_watchlist(watchlist))?;
 
     Ok(())
 }

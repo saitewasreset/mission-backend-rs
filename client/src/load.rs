@@ -1,11 +1,16 @@
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::Display;
 use encoding_rs::{DecoderResult, UTF_16LE, UTF_8};
 use regex::Regex;
 use std::io::Write;
+use std::num::ParseFloatError;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time;
+use serde::Deserialize;
+use common::kpi::{CharacterKPIType, IndexTransformRangeConfig, KPIComponent, KPIConfig};
+use common::Mapping;
 use common::mission_log::{LogContent, LogDamageInfo, LogKillInfo, LogMissionInfo, LogPlayerInfo, LogResourceInfo, LogSupplyInfo};
 use crate::format_size;
 
@@ -50,6 +55,18 @@ pub fn compress(data: &[u8]) -> Vec<u8> {
 
     compressed.shrink_to_fit();
     compressed
+}
+
+#[derive(Debug, Deserialize)]
+struct EntityListEntry {
+    pub entity_game_id: String,
+    pub _entity_name: String,
+    pub priority: f64,
+    pub driller: f64,
+    pub gunner: f64,
+    pub engineer: f64,
+    pub scout: f64,
+    pub scout_special: f64,
 }
 
 fn get_log_file_list(base_path: impl AsRef<Path>) -> Result<Vec<PathBuf>, std::io::Error> {
@@ -355,4 +372,273 @@ pub fn parse_mission_log(base_path: impl AsRef<Path>) -> Result<Vec<LogContent>,
     }
 
     Ok(parsed_mission_list)
+}
+
+pub fn parse_config_file_list(file_path: impl AsRef<Path>) -> Result<Vec<String>, LoadError> {
+    let raw_file_content = std::fs::read(file_path.as_ref()).map_err(LoadError::IOError)?;
+
+    let file_content = String::from_utf8(raw_file_content)
+        .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path.as_ref().to_string_lossy(), e)))?;
+
+    let valid_lines = file_content.lines()
+        .map(|raw_line| raw_line.trim())
+        .filter(|line| !line.starts_with('#'))
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>();
+
+    Ok(valid_lines)
+}
+
+pub fn parse_config_file_map(file_path: impl AsRef<Path>) -> Result<HashMap<String, String>, LoadError> {
+    let file_path_str = file_path.as_ref().to_string_lossy().to_string();
+
+    let valid_lines = parse_config_file_list(file_path)?;
+
+    let mut config_map = HashMap::new();
+
+    for line in valid_lines {
+        let split = line
+            .splitn(2, '|')
+            .map(|item| item.trim())
+            .collect::<Vec<_>>();
+
+        if split.len() != 2 {
+            return Err(LoadError::ParseError(format!("{}: invalid line: {}", file_path_str, line)));
+        }
+
+        config_map.insert(split[0].to_string(), split[1].to_string());
+    }
+
+    Ok(config_map)
+}
+
+pub fn load_mapping_from_file(mapping_directory: impl AsRef<Path>) -> Result<Mapping, LoadError> {
+    let character_mapping =
+        parse_config_file_map(mapping_directory.as_ref().join("character.txt"))?;
+
+    let entity_mapping =
+        parse_config_file_map(mapping_directory.as_ref().join("entity.txt"))?;
+
+    let entity_blacklist =
+        parse_config_file_list(mapping_directory.as_ref().join("entity_blacklist.txt"))?;
+
+    let entity_combine =
+        parse_config_file_map(mapping_directory.as_ref().join("entity_combine.txt"))?;
+
+    let mission_type_mapping =
+        parse_config_file_map(mapping_directory.as_ref().join("mission_type.txt"))?;
+
+    let resource_mapping =
+        parse_config_file_map(mapping_directory.as_ref().join("resource.txt"))?;
+
+    let weapon_mapping =
+        parse_config_file_map(mapping_directory.as_ref().join("weapon.txt"))?;
+
+    let weapon_combine =
+        parse_config_file_map(mapping_directory.as_ref().join("weapon_combine.txt"))?;
+
+    let weapon_character =
+        parse_config_file_map(mapping_directory.as_ref().join("weapon_hero.txt"))?;
+
+    let scout_special_player =
+        parse_config_file_list(mapping_directory.as_ref().join("scout_special.txt"))?;
+
+    Ok(Mapping {
+        character_mapping,
+        entity_mapping,
+        entity_blacklist_set: HashSet::from_iter(entity_blacklist),
+        entity_combine,
+        mission_type_mapping,
+        resource_mapping,
+        weapon_mapping,
+        weapon_combine,
+        weapon_character,
+        scout_special_player_set: HashSet::from_iter(scout_special_player),
+    })
+}
+
+fn kpi_transform_range_parse_line(line: &str) -> Result<Vec<f64>, ParseFloatError> {
+    let mut result = Vec::new();
+
+    for item_str in line.split(' ') {
+        let item = item_str.parse::<f64>()?;
+        result.push(item);
+    }
+
+    Ok(result)
+}
+
+fn kpi_load_transform_range(file_path: impl AsRef<Path>) -> Result<Vec<IndexTransformRangeConfig>, LoadError> {
+    let mut result = Vec::new();
+
+    let file_path_str = file_path.as_ref().to_string_lossy().to_string();
+
+    let lines = parse_config_file_list(file_path)?;
+
+    if lines.len() != 2 {
+        return Err(LoadError::ParseError(format!("{}: invalid line count", file_path_str)));
+    }
+
+    let source_list = kpi_transform_range_parse_line(&lines[0])
+        .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+    let transformed_list = kpi_transform_range_parse_line(&lines[1])
+        .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+    if source_list.len() != transformed_list.len() {
+        return Err(LoadError::ParseError(format!("count mismatch: source: {}, transformed: {}",
+                                                 source_list.len(),
+                                                 transformed_list.len())));
+    }
+
+    if source_list.is_empty() {
+        return Err(LoadError::ParseError(format!("{}: empty source list", file_path_str)));
+    }
+
+    let count = source_list.len();
+
+    for i in 0..count - 1 {
+        result.push(IndexTransformRangeConfig {
+            rank_range: (source_list[i], source_list[i + 1]),
+            transform_range: (transformed_list[i], transformed_list[i + 1]),
+        })
+    }
+
+    Ok(result)
+}
+
+fn kpi_load_character_component_weight(file_path: impl AsRef<Path>) -> Result<HashMap<CharacterKPIType, HashMap<KPIComponent, f64>>, LoadError> {
+    let file_path_str = file_path.as_ref().to_string_lossy().to_string();
+
+    let lines = parse_config_file_list(file_path)?;
+
+    let mut result = HashMap::new();
+
+    for line in lines {
+        let split_line = line.split(' ').collect::<Vec<_>>();
+
+        let character_type_id: i16 = split_line[0]
+            .parse()
+            .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+        let mut character_weight_list = Vec::new();
+
+        let mut character_weight_map = HashMap::new();
+
+        for weight_str in split_line.iter().skip(1) {
+            let weight = weight_str
+                .parse::<f64>()
+                .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+            character_weight_list.push(weight);
+        }
+
+        if character_weight_list.len() != 9 {
+            return Err(LoadError::ParseError(format!("{}: invalid weight count: {}", file_path_str, line)));
+        }
+
+        for (i, weight) in character_weight_list.iter().enumerate() {
+            if *weight < 0.0 || *weight > 1.0 {
+                return Err(LoadError::ParseError(format!("{}: invalid weight: {}", file_path_str, *weight)));
+            }
+
+            character_weight_map.insert(KPIComponent::try_from(i).unwrap(), *weight);
+        }
+
+        result.insert(CharacterKPIType::try_from(character_type_id).map_err(LoadError::ParseError)?, character_weight_map);
+    }
+
+    Ok(result)
+}
+
+fn kpi_load_resource_weight_table(file_path: impl AsRef<Path>) -> Result<HashMap<String, f64>, LoadError> {
+    let file_path_str = file_path.as_ref().to_string_lossy().to_string();
+
+    let mut result = HashMap::new();
+
+    let mut reader = csv::Reader::from_path(file_path).map_err(|e| LoadError::ParseError(e.to_string()))?;
+
+    for row in reader.records().skip(1) {
+        let record_list = row.map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+        if record_list.len() != 3 {
+            return Err(LoadError::ParseError(format!("{}: invalid column count in row: {:?}", file_path_str, record_list)));
+        }
+
+        let resource_game_id = record_list[0].to_string();
+        let resource_weight = record_list[2]
+            .parse::<f64>()
+            .map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+        result.insert(resource_game_id, resource_weight);
+    }
+
+    Ok(result)
+}
+
+type CharacterWeightTable = HashMap<CharacterKPIType, HashMap<String, f64>>;
+type PriorityTable = HashMap<String, f64>;
+
+fn kpi_load_entity_weight_table(file_path: impl AsRef<Path>) -> Result<(CharacterWeightTable, PriorityTable), LoadError> {
+    let file_path_str = file_path.as_ref().to_string_lossy().to_string();
+
+    let mut character_weight_table = HashMap::new();
+    let mut priority_table = HashMap::new();
+
+    let mut reader = csv::Reader::from_path(file_path).map_err(|e| LoadError::ParseError(e.to_string()))?;
+
+    for result in reader.deserialize() {
+        let record: EntityListEntry = result.map_err(|e| LoadError::ParseError(format!("{}: {}", file_path_str, e)))?;
+
+        character_weight_table
+            .entry(CharacterKPIType::Driller)
+            .or_insert_with(HashMap::new)
+            .insert(record.entity_game_id.clone(), record.driller);
+
+        character_weight_table
+            .entry(CharacterKPIType::Gunner)
+            .or_insert_with(HashMap::new)
+            .insert(record.entity_game_id.clone(), record.gunner);
+
+        character_weight_table
+            .entry(CharacterKPIType::Engineer)
+            .or_insert_with(HashMap::new)
+            .insert(record.entity_game_id.clone(), record.engineer);
+
+        character_weight_table
+            .entry(CharacterKPIType::Scout)
+            .or_insert_with(HashMap::new)
+            .insert(record.entity_game_id.clone(), record.scout);
+
+        character_weight_table
+            .entry(CharacterKPIType::ScoutSpecial)
+            .or_insert_with(HashMap::new)
+            .insert(record.entity_game_id.clone(), record.scout_special);
+
+        priority_table.insert(record.entity_game_id, record.priority);
+    }
+
+    Ok((character_weight_table, priority_table))
+}
+
+pub fn load_kpi_config_from_file(kpi_config_directory: impl AsRef<Path>) -> Result<KPIConfig, LoadError> {
+    let character_component_weight =
+        kpi_load_character_component_weight(kpi_config_directory.as_ref().join("character_component_weight.txt"))?;
+
+    let resource_weight_table =
+        kpi_load_resource_weight_table(kpi_config_directory.as_ref().join("resource_table.csv"))?;
+
+    let (character_weight_table, priority_table) =
+        kpi_load_entity_weight_table(kpi_config_directory.as_ref().join("entity_list_combined.csv"))?;
+
+    let transform_range =
+        kpi_load_transform_range(kpi_config_directory.as_ref().join("transform_range.txt"))?;
+
+    Ok(KPIConfig {
+        character_weight_table,
+        priority_table,
+        resource_weight_table,
+        character_component_weight,
+        transform_range,
+    })
 }

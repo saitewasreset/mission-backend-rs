@@ -17,3 +17,4 @@ clio = { version = "0.3", features = ["clap-parse"] }
 rpassword = "7.3"
 chrono = "0.4"
 tabled = { version = "0.18", features = ["derive"] }
+csv = { version = "1.3" }
