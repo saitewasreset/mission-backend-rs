@@ -10,6 +10,7 @@ use common::{APIResponse, Mapping};
 use common::kpi::KPIConfig;
 use common::mission::APIMission;
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
+use common::admin::{APIMissionInvalid, APISetMissionInvalid};
 use common::cache::{APICacheStatus, APICacheType};
 use crate::ClientError;
 
@@ -24,6 +25,8 @@ pub enum API {
     CheckSession,
     UpdateCache,
     GetCacheStatus,
+    SetMissionInvalid,
+    GetMissionInvalid,
 }
 
 impl API {
@@ -39,6 +42,8 @@ impl API {
             API::CheckSession => format!("{}/check_session", api_endpoint),
             API::UpdateCache => format!("{}/cache/update_cache", api_endpoint),
             API::GetCacheStatus => format!("{}/cache/get_cache_status", api_endpoint),
+            API::SetMissionInvalid => format!("{}/admin/set_mission_invalid", api_endpoint),
+            API::GetMissionInvalid => format!("{}/admin/mission_invalid", api_endpoint),
         }
     }
 }
@@ -211,5 +216,13 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn get_cache_status(&mut self) -> APIResult<APICacheStatus> {
         self.get(API::GetCacheStatus)
+    }
+
+    pub fn set_mission_invalid(&mut self, mission_invalid_data: APISetMissionInvalid) -> APIResult<()> {
+        self.post(API::SetMissionInvalid, mission_invalid_data)
+    }
+
+    pub fn get_mission_invalid(&mut self) -> APIResult<Vec<APIMissionInvalid>> {
+        self.get(API::GetMissionInvalid)
     }
 }

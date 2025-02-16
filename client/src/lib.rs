@@ -6,6 +6,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use clio::Input;
 use serde::de::DeserializeOwned;
+use common::admin::APISetMissionInvalid;
 use common::cache::APICacheType;
 use crate::api::{APIResult, Authenticated, MissionMonitorClient, NotAuthenticated};
 use crate::cache_status::print_cache_status;
@@ -18,6 +19,8 @@ pub mod api;
 pub mod formatter;
 pub mod cache_status;
 pub mod mission_list;
+
+pub mod mission_invalid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClientConfig {
@@ -213,6 +216,40 @@ pub fn cli_load_kpi_watchlist(client_config: ClientConfig, watchlist_path: Optio
     let watchlist = parse_config_file_list(&kpi_config_directory)?;
 
     Result::from(client.load_watchlist(watchlist))?;
+
+    Ok(())
+}
+
+pub fn cli_delete_mission_invalid(client_config: ClientConfig, mission_id: i32) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    Result::from(client.set_mission_invalid(APISetMissionInvalid {
+        invalid: false,
+        mission_id,
+        reason: String::new(),
+    }))?;
+
+    Ok(())
+}
+
+pub fn cli_add_mission_invalid(client_config: ClientConfig, mission_id: i32, reason: String) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    Result::from(client.set_mission_invalid(APISetMissionInvalid {
+        invalid: true,
+        mission_id,
+        reason,
+    }))?;
+
+    Ok(())
+}
+
+pub fn cli_get_mission_invalid(client_config: ClientConfig) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let mission_invalid_list = Result::from(client.get_mission_invalid())?;
+
+    mission_invalid::print_mission_invalid_list(mission_invalid_list);
 
     Ok(())
 }
