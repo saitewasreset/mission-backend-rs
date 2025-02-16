@@ -1,15 +1,13 @@
 pub mod delete_mission;
+pub mod mission_invalid;
 
 use crate::{api_parse_json_body, db::schema::player, APIResponse, AppState, DbPool};
-use actix_web::{
-    post,
-    web::{self, Buf, Bytes, Data, Json},
-    HttpRequest,
-};
+use actix_web::{get, post, web::{self, Buf, Bytes, Data, Json}, HttpRequest};
 use diesel::prelude::*;
 use diesel::{insert_into, update};
-use log::{error, warn};
+use log::error;
 use std::fs;
+use common::admin::{APIMissionInvalid, APISetMissionInvalid};
 use crate::cache::manager::CacheManager;
 
 #[derive(Insertable)]
@@ -173,32 +171,96 @@ async fn api_delete_mission(
         return Json(APIResponse::unauthorized());
     }
 
-    let to_delete_mission_list: Vec<i32> = match serde_json::from_reader(body.reader()) {
-        Ok(x) => x,
-        Err(e) => {
-            warn!("cannot parse payload body as json: {}", e);
-            return Json(APIResponse::bad_request(
-                "cannot parse payload body as json",
-            ));
+    match api_parse_json_body::<Vec<i32>>(body) {
+        Err(e) => Json(APIResponse::bad_request(&e)),
+        Ok(to_delete_mission_list) => {
+            let result = web::block(move || {
+                let mut conn = db_pool.get().map_err(|e| format!("cannot get db connection from pool: {}", e))?;
+
+                for mission_id in to_delete_mission_list {
+                    delete_mission::delete_mission(&mut conn, mission_id)?;
+                }
+
+                Ok::<_, String>(())
+            })
+                .await
+                .unwrap();
+
+            match result {
+                Ok(()) => Json(APIResponse::ok(())),
+                Err(e) => {
+                    error!("cannot delete mission: {}", e);
+                    Json(APIResponse::internal_error())
+                }
+            }
         }
-    };
+    }
+}
+
+#[post("/set_mission_invalid")]
+async fn api_set_mission_invalid(
+    requests: HttpRequest,
+    app_state: Data<AppState>,
+    db_pool: Data<DbPool>,
+    body: Bytes,
+) -> Json<APIResponse<()>> {
+    if !app_state.check_session(&requests) {
+        return Json(APIResponse::unauthorized());
+    }
+
+    match api_parse_json_body::<APISetMissionInvalid>(body) {
+        Err(e) => Json(APIResponse::bad_request(&e)),
+        Ok(set_invalid) => {
+            let result = web::block(move || {
+                let mut conn = db_pool.get().map_err(|e| format!("cannot get db connection from pool: {}", e))?;
+
+                if set_invalid.invalid {
+                    if mission_invalid::check_invalid_record_exist(&mut conn, set_invalid.mission_id)? {
+                        mission_invalid::delete_mission_invalid(&mut conn, set_invalid.mission_id)?;
+                    }
+                    mission_invalid::add_mission_invalid(&mut conn, set_invalid.mission_id, set_invalid.reason)?;
+                } else {
+                    mission_invalid::delete_mission_invalid(&mut conn, set_invalid.mission_id)?;
+                }
+
+                Ok::<_, String>(APIResponse::ok(()))
+            })
+                .await
+                .unwrap();
+
+            match result {
+                Ok(response) => Json(response),
+                Err(e) => {
+                    error!("cannot set mission invalid: {}", e);
+                    Json(APIResponse::internal_error())
+                }
+            }
+        }
+    }
+}
+
+#[get("/mission_invalid")]
+async fn api_get_mission_invalid(
+    requests: HttpRequest,
+    app_state: Data<AppState>,
+    db_pool: Data<DbPool>,
+) -> Json<APIResponse<Vec<APIMissionInvalid>>> {
+    if !app_state.check_session(&requests) {
+        return Json(APIResponse::unauthorized());
+    }
 
     let result = web::block(move || {
         let mut conn = db_pool.get().map_err(|e| format!("cannot get db connection from pool: {}", e))?;
 
-        for mission_id in to_delete_mission_list {
-            delete_mission::delete_mission(&mut conn, mission_id)?;
-        }
-
-        Ok::<_, String>(())
+        mission_invalid::get_mission_invalid(&mut conn)
     })
         .await
         .unwrap();
 
     match result {
-        Ok(()) => Json(APIResponse::ok(())),
+        Ok(response) => Json(APIResponse::ok(response)),
         Err(e) => {
-            error!("cannot delete mission: {}", e);
+            error!("cannot get mission invalid: {}", e);
             Json(APIResponse::internal_error())
         }
     }
@@ -209,5 +271,7 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(load_watchlist);
     cfg.service(load_kpi);
     cfg.service(api_delete_mission);
+    cfg.service(api_set_mission_invalid);
+    cfg.service(api_get_mission_invalid);
 }
 

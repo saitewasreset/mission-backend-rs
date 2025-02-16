@@ -5,6 +5,7 @@ pub mod info;
 pub mod general;
 pub mod cache;
 pub mod mission_log;
+pub mod admin;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
