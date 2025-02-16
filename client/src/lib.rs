@@ -253,3 +253,19 @@ pub fn cli_get_mission_invalid(client_config: ClientConfig) -> Result<(), Client
 
     Ok(())
 }
+
+pub fn cli_server_init(client_config: ClientConfig) -> Result<(), ClientError> {
+    println!("Loading watchlist...");
+    cli_load_kpi_watchlist(client_config.clone(), None)?;
+
+    println!("Loading kpi config...");
+    cli_load_kpi_config(client_config.clone(), None)?;
+
+    println!("Loading mapping...");
+    cli_load_mapping(client_config.clone(), None)?;
+
+    println!("Loading mission...");
+    cli_load_mission(client_config.clone())?;
+
+    Ok(())
+}
