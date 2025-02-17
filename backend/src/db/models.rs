@@ -156,7 +156,9 @@ pub struct MissionInvalid {
     pub reason: String,
 }
 
-#[derive(Queryable, Selectable, Identifiable, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Associations, Clone)]
+#[diesel(belongs_to(Mission))]
+#[diesel(belongs_to(Player))]
 #[diesel(table_name = super::schema::assigned_kpi)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct AssignedKPI {

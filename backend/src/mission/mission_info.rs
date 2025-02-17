@@ -388,6 +388,9 @@ pub fn generate_mission_kpi_full(
 
     for (player_id, raw_kpi_data) in &mission_kpi_cached_info.raw_kpi_data {
         let player_name = player_id_to_name.get(player_id).unwrap().clone();
+        let player_assigned_kpi_info = mission_kpi_cached_info
+            .assigned_kpi_info
+            .get(player_id);
 
         let kpi_character_type = mission_kpi_cached_info
             .player_id_to_kpi_character
@@ -476,6 +479,17 @@ pub fn generate_mission_kpi_full(
             let current_weight =
                 kpi_config.character_component_weight[kpi_character_type][kpi_component];
 
+            let component_delta_value = player_assigned_kpi_info
+                .map(|assigned_kpi|
+                    assigned_kpi
+                        .by_component
+                        .get(kpi_component)
+                        .copied()
+                        .unwrap_or_default())
+                .unwrap_or_default();
+
+            let assigned_index = transformed_index + component_delta_value;
+
             player_kpi_component_list.push(MissionKPIComponent {
                 name: component_name,
                 source_value: kpi_data.source_value,
@@ -484,10 +498,11 @@ pub fn generate_mission_kpi_full(
                 raw_index: kpi_data.raw_index,
                 corrected_index,
                 transformed_index,
+                assigned_index,
                 weight: current_weight,
             });
 
-            player_mission_kpi_weighted_sum += transformed_index * current_weight;
+            player_mission_kpi_weighted_sum += assigned_index * current_weight;
             player_mission_kpi_max_sum += kpi_component.max_value() * current_weight;
         }
 
@@ -497,6 +512,16 @@ pub fn generate_mission_kpi_full(
 
             a_index.cmp(&b_index)
         });
+
+
+        let overall_delta_value = player_assigned_kpi_info
+            .map(|assigned_kpi|
+                assigned_kpi
+                    .overall
+                    .unwrap_or_default())
+            .unwrap_or_default();
+
+        let mission_kpi = player_mission_kpi_weighted_sum / player_mission_kpi_max_sum + overall_delta_value;
 
         result.push(MissionKPIInfoFull {
             player_name,
@@ -511,7 +536,11 @@ pub fn generate_mission_kpi_full(
             supply_count,
             weighted_resource,
             component: player_kpi_component_list,
-            mission_kpi: player_mission_kpi_weighted_sum / player_mission_kpi_max_sum,
+            mission_kpi,
+            note: player_assigned_kpi_info
+                .map(|assigned_kpi| &assigned_kpi.note)
+                .cloned()
+                .unwrap_or_default(),
         });
     }
 

@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use common::kpi::PlayerAssignedKPIInfo;
 use common::damage::{DamagePack, KillPack, SupplyPack, WeaponPack};
 use crate::db::models::*;
 use crate::db::schema::*;
@@ -17,7 +18,8 @@ use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 use std::ops::{Add, AddAssign};
 use std::time::{Duration, Instant};
-use diesel::associations::BelongsTo;
+use diesel::associations::{BelongsTo, HasTable};
+use log::error;
 use crate::cache::manager::{get_from_redis, CacheContext, CacheError, CacheGenerationError, Cacheable};
 // 用于缓存输出任务详情及计算任务KPI、玩家KPI、赋分信息等需要的任务信息
 // depends on:
@@ -520,6 +522,7 @@ impl MissionCachedInfo {
             "cannot load supply info for mission_id = {} from db: {}", mission_id, e
         ))?;
 
+
         let mission_raw_info = MissionRawInfo {
             mission: mission_info,
             player_info_list: player_info,
@@ -588,6 +591,7 @@ impl MissionCachedInfo {
         let resource_info_by_mission = db_group_by_mission(&all_mission_info, all_resource_info);
 
         let supply_info_by_mission = db_group_by_mission(&all_mission_info, all_supply_info);
+
 
         let mut mission_info_list = Vec::with_capacity(all_mission_info.len());
 
@@ -718,11 +722,14 @@ pub struct MissionKPICachedInfo {
     pub total_resource_map: HashMap<String, f64>,
     pub player_id_to_kpi_character: HashMap<i16, CharacterKPIType>,
     pub raw_kpi_data: HashMap<i16, HashMap<KPIComponent, PlayerRawKPIData>>,
+    // player_id -> PlayerAssignedKPIInfo
+    pub assigned_kpi_info: HashMap<i16, PlayerAssignedKPIInfo>,
 }
 
 impl MissionKPICachedInfo {
     fn generate(
         mission_info: &MissionCachedInfo,
+        mission_assigned_kpi_info: impl AsRef<[AssignedKPI]>,
         character_id_to_game_id: &HashMap<i16, String>,
         player_id_to_name: &HashMap<i16, String>,
         scout_special_player_set: &HashSet<String>,
@@ -1027,6 +1034,30 @@ impl MissionKPICachedInfo {
             raw_kpi_data.insert(player_info.player_id, player_raw_kpi_data);
         }
 
+        let mut assigned_kpi_info_by_player_id = HashMap::new();
+
+        for assigned_info in mission_assigned_kpi_info.as_ref() {
+            let entry = assigned_kpi_info_by_player_id.entry(assigned_info.player_id).or_insert(PlayerAssignedKPIInfo {
+                by_component: HashMap::new(),
+                overall: None,
+                note: assigned_info.note.clone().unwrap_or_default(),
+            });
+
+            if assigned_info.kpi_component_delta_value != 0.0 {
+                let target_kpi_component = if let Ok(x) = (assigned_info.target_kpi_component as usize).try_into() {
+                    x
+                } else {
+                    error!("invalid target_kpi_component: {}", assigned_info.target_kpi_component);
+                    KPIComponent::Kill
+                };
+                entry.by_component.insert(target_kpi_component, assigned_info.kpi_component_delta_value);
+            }
+
+            if assigned_info.total_delta_value != 0.0 {
+                entry.overall = Some(assigned_info.total_delta_value);
+            }
+        }
+
         let result = MissionKPICachedInfo {
             mission_id: mission_info.mission_info.id,
             damage_map,
@@ -1037,6 +1068,7 @@ impl MissionKPICachedInfo {
             total_resource_map,
             player_id_to_kpi_character,
             raw_kpi_data,
+            assigned_kpi_info: assigned_kpi_info_by_player_id,
         };
 
         let elapsed = begin.elapsed();
@@ -1060,14 +1092,28 @@ impl MissionKPICachedInfo {
 
         let mission_list = MissionCachedInfo::try_get_cached_all(db_conn, redis_conn)?;
 
+        let all_assigned_kpi_info: Vec<AssignedKPI> = AssignedKPI::table()
+            .load(db_conn)
+            .map_err(|e| CacheError::InternalError(format!("cannot load assigned kpi info from db: {}", e)))?;
+
         let load_from_redis_elapsed = begin.elapsed();
         let begin = Instant::now();
+
+        let mut assigned_kpi_info_by_mission: HashMap<i32, Vec<AssignedKPI>> = HashMap::new();
+
+        for assigned_kpi in all_assigned_kpi_info {
+            assigned_kpi_info_by_mission
+                .entry(assigned_kpi.mission_id)
+                .or_default()
+                .push(assigned_kpi);
+        }
 
         let mut result = Vec::with_capacity(mission_list.len());
 
         for mission_info in &mission_list {
             let generated = Self::generate(
                 mission_info,
+                assigned_kpi_info_by_mission.get(&mission_info.mission_info.id).unwrap_or(&Vec::new()),
                 character_id_to_game_id,
                 player_id_to_name,
                 scout_special_player_set,

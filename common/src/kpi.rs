@@ -256,3 +256,10 @@ pub struct PlayerKPIInfo {
     #[serde(rename = "byCharacter")]
     pub by_character: HashMap<String, PlayerCharacterKPIInfo>,
 }
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct PlayerAssignedKPIInfo {
+    pub by_component: HashMap<KPIComponent, f64>,
+    pub overall: Option<f64>,
+    pub note: String,
+}

@@ -172,6 +172,8 @@ pub struct MissionKPIComponent {
     pub corrected_index: f64,
     #[serde(rename = "transformedIndex")]
     pub transformed_index: f64,
+    #[serde(rename = "assignedIndex")]
+    pub assigned_index: f64,
     pub weight: f64,
 }
 
@@ -230,6 +232,7 @@ pub struct MissionKPIInfoFull {
     pub component: Vec<MissionKPIComponent>,
     #[serde(rename = "missionKPI")]
     pub mission_kpi: f64,
+    pub note: String,
 }
 
 pub fn hazard_id_to_name(hazard_id: i16) -> String {
