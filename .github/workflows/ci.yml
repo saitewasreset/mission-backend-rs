@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - 'config/**'
-      - 'migrations/**'
+    paths:
+      - 'backend/**'
+      - 'client/**'
+      - 'common/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 jobs:
   test:

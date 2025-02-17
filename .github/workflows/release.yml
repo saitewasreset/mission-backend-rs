@@ -5,6 +5,11 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+    paths:
+      - 'client/**'
+      - 'common/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 # We need this to be able to create releases.
 permissions:
@@ -41,7 +46,7 @@ jobs:
 
   build-release:
     name: build-release
-    needs: ["create-release"]
+    needs: [ "create-release" ]
     runs-on: ${{ matrix.os }}
     env:
       # For some builds, we use cross to test on 32-bit and big-endian
@@ -102,22 +107,11 @@ jobs:
 
           echo "target dir is: ${{ env.TARGET_DIR }}"
 
-      - name: Install packages (MacOS)
-        if: (matrix.os == 'macos-latest') || (matrix.os == 'macos-latest-large')
-        run: |
-          brew install libpq
-          brew link --force libpq
-
       - name: Build release binary
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            export PATH="/c/Program Files/PostgreSQL/14/lib:/c/Program Files/PostgreSQL/14/bin:$PATH"
-            ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
-          else
-            PATH="/usr/local/opt/libpq/bin:$PATH" ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
-          fi
-
+          ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }} --bin mission-monitor-tools
+          
           bin_dir="target/${{ matrix.target }}/release/"
           echo "BIN_DIR=$bin_dir" >> $GITHUB_ENV
 
@@ -133,15 +127,9 @@ jobs:
           mkdir -p "$ARCHIVE"
           cp -r config/* "$ARCHIVE"/
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "$BIN_DIR/load_kpi.exe" "$ARCHIVE"/
-            cp "$BIN_DIR/load_mapping.exe" "$ARCHIVE"/
-            cp "$BIN_DIR/load_mission.exe" "$ARCHIVE"/
-            cp "$BIN_DIR/load_watchlist.exe" "$ARCHIVE"/
+            cp "$BIN_DIR/mission-monitor-tools.exe" "$ARCHIVE"/
           else
-            cp "$BIN_DIR/load_kpi" "$ARCHIVE"/
-            cp "$BIN_DIR/load_mapping" "$ARCHIVE"/
-            cp "$BIN_DIR/load_mission" "$ARCHIVE"/
-            cp "$BIN_DIR/load_watchlist" "$ARCHIVE"/
+            cp "$BIN_DIR/mission-monitor-tools" "$ARCHIVE"/
           fi
 
       - name: Build archive (Windows)

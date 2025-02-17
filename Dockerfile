@@ -1,24 +1,27 @@
 # build stage
-FROM rust:alpine AS builder
+FROM rust AS builder
 WORKDIR /usr/src/mission-backend-rs
-COPY ./migrations ./migrations
-COPY ./src ./src
+RUN apt-get update
+RUN apt-get -y install libpq-dev lld
+# https://www.aloxaf.com/2018/09/reduce_rust_size/
+RUN apt-get -y install binutils
+RUN wget https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz
+RUN tar -xf upx-4.2.4-amd64_linux.tar.xz
+
+COPY ./backend ./backend
+COPY ./common ./common
+COPY ./client ./client
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
-RUN apk add --no-cache musl-dev pkgconf openssl-dev libpq-dev openssl-libs-static
-ENV OPENSSL_STATIC=true \
-    OPENSSL_LIB_DIR=/usr/lib \
-    OPENSSL_INCLUDE_DIR=/usr/include \
-    PKG_CONFIG_ALLOW_CROSS=1 \
-    PQ_LIB_STATIC=true
+ENV RUSTFLAGS="-C link-arg=-fuse-ld=lld"
+
 RUN cargo build --release --bin mission-backend-rs
-# https://www.aloxaf.com/2018/09/reduce_rust_size/
-RUN apk add --no-cache binutils upx
 RUN strip target/release/mission-backend-rs
-RUN upx --best target/release/mission-backend-rs
+RUN ./upx-4.2.4-amd64_linux/upx --best target/release/mission-backend-rs
 
 # production stage
-FROM alpine:latest
-RUN apk add --no-cache curl
+FROM debian:stable-slim
+RUN apt-get update
+RUN apt-get -y install libpq5
 COPY --from=builder /usr/src/mission-backend-rs/target/release/mission-backend-rs /usr/local/bin/mission-backend-rs
 CMD ["mission-backend-rs"]
