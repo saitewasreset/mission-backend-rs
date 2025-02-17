@@ -1,6 +1,18 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    assigned_kpi (id) {
+        id -> Int4,
+        mission_id -> Int4,
+        player_id -> Int2,
+        target_kpi_component -> Int2,
+        kpi_component_delta_value -> Float8,
+        total_delta_value -> Float8,
+        note -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     character (id) {
         id -> Int2,
         character_game_id -> Text,
@@ -129,6 +141,8 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(assigned_kpi -> mission (mission_id));
+diesel::joinable!(assigned_kpi -> player (player_id));
 diesel::joinable!(damage_info -> mission (mission_id));
 diesel::joinable!(kill_info -> entity (entity_id));
 diesel::joinable!(kill_info -> mission (mission_id));
@@ -145,6 +159,7 @@ diesel::joinable!(supply_info -> mission (mission_id));
 diesel::joinable!(supply_info -> player (player_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    assigned_kpi,
     character,
     damage_info,
     entity,

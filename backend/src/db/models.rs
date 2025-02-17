@@ -155,3 +155,16 @@ pub struct MissionInvalid {
     pub mission_id: i32,
     pub reason: String,
 }
+
+#[derive(Queryable, Selectable, Identifiable, Clone)]
+#[diesel(table_name = super::schema::assigned_kpi)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct AssignedKPI {
+    pub id: i32,
+    pub mission_id: i32,
+    pub player_id: i16,
+    pub target_kpi_component: i16,
+    pub kpi_component_delta_value: f64,
+    pub total_delta_value: f64,
+    pub note: Option<String>,
+}
