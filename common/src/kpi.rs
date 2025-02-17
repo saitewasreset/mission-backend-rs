@@ -263,3 +263,16 @@ pub struct PlayerAssignedKPIInfo {
     pub overall: Option<f64>,
     pub note: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct APIAssignedKPI {
+    pub mission_id: i32,
+    pub player_name: String,
+    pub player_assigned_kpi_info: PlayerAssignedKPIInfo,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct APIDeleteAssignedKPI {
+    pub mission_id: i32,
+    pub player_name: String,
+}

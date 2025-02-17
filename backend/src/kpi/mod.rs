@@ -2,6 +2,7 @@ pub mod bot_kpi_info;
 pub mod info;
 pub mod player;
 pub mod version;
+mod assigned_kpi;
 
 use actix_web::web;
 use std::{
@@ -41,4 +42,8 @@ pub fn scoped_config(cfg: &mut web::ServiceConfig) {
     cfg.service(player::get_player_kpi);
 
     cfg.service(bot_kpi_info::get_bot_kpi_info);
+
+    cfg.service(assigned_kpi::api_get_assigned_kpi);
+    cfg.service(assigned_kpi::api_set_assigned_kpi);
+    cfg.service(assigned_kpi::api_delete_assigned_kpi);
 }

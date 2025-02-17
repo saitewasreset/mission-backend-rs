@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::Arc;
 use common::{APIResponse, Mapping};
-use common::kpi::KPIConfig;
+use common::kpi::{APIAssignedKPI, APIDeleteAssignedKPI, KPIConfig};
 use common::mission::APIMission;
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use common::admin::{APIMissionInvalid, APISetMissionInvalid};
@@ -27,6 +27,9 @@ pub enum API {
     GetCacheStatus,
     SetMissionInvalid,
     GetMissionInvalid,
+    GetAssignedKPI,
+    SetAssignedKPI,
+    DeleteAssignedKPI,
 }
 
 impl API {
@@ -44,6 +47,9 @@ impl API {
             API::GetCacheStatus => format!("{}/cache/get_cache_status", api_endpoint),
             API::SetMissionInvalid => format!("{}/admin/set_mission_invalid", api_endpoint),
             API::GetMissionInvalid => format!("{}/admin/mission_invalid", api_endpoint),
+            API::GetAssignedKPI => format!("{}/kpi/assigned_kpi", api_endpoint),
+            API::SetAssignedKPI => format!("{}/kpi/set_assigned_kpi", api_endpoint),
+            API::DeleteAssignedKPI => format!("{}/kpi/delete_assigned_kpi", api_endpoint),
         }
     }
 }
@@ -132,6 +138,10 @@ impl<T> MissionMonitorClient<T> {
 
     pub fn get_api_mission_list(&mut self) -> APIResult<Vec<APIMission>> {
         self.get(API::APIMissionList)
+    }
+
+    pub fn get_assigned_kpi(&mut self) -> APIResult<Vec<APIAssignedKPI>> {
+        self.get(API::GetAssignedKPI)
     }
 }
 
@@ -225,5 +235,13 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn get_mission_invalid(&mut self) -> APIResult<Vec<APIMissionInvalid>> {
         self.get(API::GetMissionInvalid)
+    }
+
+    pub fn set_assigned_kpi(&mut self, assigned_kpi: APIAssignedKPI) -> APIResult<()> {
+        self.post(API::SetAssignedKPI, assigned_kpi)
+    }
+
+    pub fn delete_assigned_kpi(&mut self, to_delete_assigned_kpi: APIDeleteAssignedKPI) -> APIResult<()> {
+        self.post(API::DeleteAssignedKPI, to_delete_assigned_kpi)
     }
 }

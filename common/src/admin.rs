@@ -14,3 +14,4 @@ pub struct APIMissionInvalid {
     pub mission_id: i32,
     pub reason: String,
 }
+
