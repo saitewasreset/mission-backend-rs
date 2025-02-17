@@ -1604,6 +1604,7 @@ dependencies = [
  "chrono",
  "clio",
  "common",
+ "cookie_store",
  "csv",
  "encoding_rs",
  "regex",

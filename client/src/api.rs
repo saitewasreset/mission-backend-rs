@@ -155,7 +155,7 @@ impl MissionMonitorClient<NotAuthenticated> {
     }
 
     pub fn load_cookie(mut self, cookie_storage_content: &[u8]) -> Result<MissionMonitorClient<Authenticated>, (ClientError, Self)> {
-        match CookieStore::load_json(cookie_storage_content) {
+        match cookie_store::serde::json::load(cookie_storage_content) {
             Ok(cookie_store) => {
                 self.cookie_provider = Arc::new(CookieStoreMutex::new(cookie_store));
 
@@ -202,7 +202,8 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn save_cookie(&self, cookie_path: impl AsRef<Path>) -> Result<(), ClientError> {
         let mut save_file = File::open(cookie_path).map_err(|e| ClientError::InputError(format!("cannot open cookie storage file: {}", e)))?;
-        self.cookie_provider.lock().unwrap().save_json(&mut save_file).map_err(|e| ClientError::InputError(format!("cannot save cookie storage: {}", e)))?;
+
+        cookie_store::serde::json::save(&self.cookie_provider.lock().unwrap(), &mut save_file).map_err(|e| ClientError::InputError(format!("cannot save cookie storage: {}", e)))?;
         Ok(())
     }
 
