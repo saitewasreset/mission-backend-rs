@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -105,6 +106,31 @@ impl Display for KPIComponent {
             KPIComponent::Supply => write!(f, "supply"),
             KPIComponent::Minerals => write!(f, "minerals"),
         }
+    }
+}
+
+impl TryFrom<&str> for KPIComponent {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "kill" => Ok(KPIComponent::Kill),
+            "damage" => Ok(KPIComponent::Damage),
+            "priority" => Ok(KPIComponent::Priority),
+            "revive" => Ok(KPIComponent::Revive),
+            "death" => Ok(KPIComponent::Death),
+            "friendly_fire" => Ok(KPIComponent::FriendlyFire),
+            "nitra" => Ok(KPIComponent::Nitra),
+            "supply" => Ok(KPIComponent::Supply),
+            "minerals" => Ok(KPIComponent::Minerals),
+            _ => Err(format!("Invalid KPI component: {}", value)),
+        }
+    }
+}
+
+impl FromStr for KPIComponent {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::try_from(s)
     }
 }
 

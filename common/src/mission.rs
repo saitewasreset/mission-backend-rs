@@ -63,7 +63,7 @@ pub struct MissionGeneralInfo {
     pub mission_invalid_reason: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct MissionGeneralPlayerInfo {
     #[serde(rename = "characterGameId")]
     pub character_game_id: String,
@@ -83,7 +83,7 @@ pub struct MissionGeneralPlayerInfo {
     pub player_escaped: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct MissionGeneralData {
     #[serde(rename = "beginTimeStamp")]
     pub begin_timestamp: i64,
@@ -157,7 +157,7 @@ pub struct MissionResourceInfo {
     pub resource_mapping: HashMap<String, String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct MissionKPIComponent {
     pub name: String,
     #[serde(rename = "sourceValue")]
@@ -206,7 +206,7 @@ impl From<MissionKPIInfoFull> for MissionKPIInfo {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct MissionKPIInfoFull {
     #[serde(rename = "playerName")]
     pub player_name: String,

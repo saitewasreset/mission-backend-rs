@@ -8,7 +8,9 @@ use clio::Input;
 use serde::de::DeserializeOwned;
 use common::admin::APISetMissionInvalid;
 use common::cache::APICacheType;
+use common::kpi::APIDeleteAssignedKPI;
 use crate::api::{APIResult, Authenticated, MissionMonitorClient, NotAuthenticated};
+use crate::assigned_kpi::{print_assigned_kpi, read_assigned_kpi};
 use crate::cache_status::print_cache_status;
 use crate::load::{compress, load_kpi_config_from_file, load_mapping_from_file, parse_config_file_list, parse_mission_log, LoadError};
 use crate::mission_list::print_mission_list;
@@ -21,6 +23,8 @@ pub mod cache_status;
 pub mod mission_list;
 
 pub mod mission_invalid;
+pub mod kpi;
+pub mod assigned_kpi;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClientConfig {
@@ -268,4 +272,50 @@ pub fn cli_server_init(client_config: ClientConfig) -> Result<(), ClientError> {
     cli_load_mission(client_config.clone())?;
 
     Ok(())
+}
+
+pub fn cli_get_assigned_kpi(client_config: ClientConfig, mission_id: Option<i32>, player_name: Option<String>) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let assigned_kpi_list = Result::from(client.get_assigned_kpi())?;
+
+    let assigned_kpi_list = assigned_kpi_list
+        .into_iter()
+        .filter(|x| {
+            if let Some(mission_id) = mission_id {
+                x.mission_id == mission_id
+            } else {
+                true
+            }
+        })
+        .filter(|x| {
+            if let Some(player_name) = &player_name {
+                x.player_name.as_str() == player_name.as_str()
+            } else {
+                true
+            }
+        }).collect::<Vec<_>>();
+
+    for assigned_kpi in &assigned_kpi_list {
+        print_assigned_kpi(assigned_kpi);
+    }
+
+    Ok(())
+}
+
+pub fn cli_set_assigned_kpi(client_config: ClientConfig) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    let assigned_kpi = read_assigned_kpi(&mut client).map_err(ClientError::InputError)?;
+
+    Result::from(client.set_assigned_kpi(assigned_kpi))
+}
+
+pub fn cli_delete_assigned_kpi(client_config: ClientConfig, mission_id: i32, player_name: String) -> Result<(), ClientError> {
+    let mut client = client_from_local_cookie_unchecked(client_config)?;
+
+    Result::from(client.delete_assigned_kpi(APIDeleteAssignedKPI {
+        mission_id,
+        player_name,
+    }))
 }

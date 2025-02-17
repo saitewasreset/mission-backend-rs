@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use common::{APIResponse, Mapping};
 use common::kpi::{APIAssignedKPI, APIDeleteAssignedKPI, KPIConfig};
-use common::mission::APIMission;
+use common::mission::{APIMission, MissionGeneralData, MissionKPIInfoFull};
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use common::admin::{APIMissionInvalid, APISetMissionInvalid};
 use common::cache::{APICacheStatus, APICacheType};
@@ -21,6 +21,8 @@ pub enum API {
     LoadKPI,
     DeleteMission,
     APIMissionList,
+    MissionGeneralInfo(i32),
+    MissionKPIFull(i32),
     Login,
     CheckSession,
     UpdateCache,
@@ -41,6 +43,8 @@ impl API {
             API::LoadKPI => format!("{}/admin/load_kpi", api_endpoint),
             API::DeleteMission => format!("{}/admin/delete_mission", api_endpoint),
             API::APIMissionList => format!("{}/mission/api_mission_list", api_endpoint),
+            API::MissionGeneralInfo(mission_id) => format!("{}/mission/{}/general", api_endpoint, mission_id),
+            API::MissionKPIFull(mission_id) => format!("{}/mission/{}/kpi_full", api_endpoint, mission_id),
             API::Login => format!("{}/login", api_endpoint),
             API::CheckSession => format!("{}/check_session", api_endpoint),
             API::UpdateCache => format!("{}/cache/update_cache", api_endpoint),
@@ -143,6 +147,10 @@ impl<T> MissionMonitorClient<T> {
     pub fn get_assigned_kpi(&mut self) -> APIResult<Vec<APIAssignedKPI>> {
         self.get(API::GetAssignedKPI)
     }
+
+    pub fn get_mission_general_info(&mut self, mission_id: i32) -> APIResult<MissionGeneralData> {
+        self.get(API::MissionGeneralInfo(mission_id))
+    }
 }
 
 impl MissionMonitorClient<NotAuthenticated> {
@@ -243,5 +251,9 @@ impl MissionMonitorClient<Authenticated> {
 
     pub fn delete_assigned_kpi(&mut self, to_delete_assigned_kpi: APIDeleteAssignedKPI) -> APIResult<()> {
         self.post(API::DeleteAssignedKPI, to_delete_assigned_kpi)
+    }
+
+    pub fn get_mission_kpi_info(&mut self, mission_id: i32) -> APIResult<Vec<MissionKPIInfoFull>> {
+        self.get(API::MissionKPIFull(mission_id))
     }
 }
