@@ -15,6 +15,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use actix_web::cookie::Cookie;
+use actix_web::cookie::time::Duration;
 use actix_web::web::{Buf, Bytes};
 use log::warn;
 use common::{APIMapping, APIResponse, Mapping};
@@ -147,6 +148,7 @@ pub async fn login(app_state: Data<AppState>,
             let cookie = Cookie::build("session_id", session_id.to_string())
                 .path("/")
                 .http_only(true)
+                .max_age(Duration::days(30))
                 .finish();
 
             HttpResponse::Ok().cookie(cookie).json(APIResponse::ok(()))
