@@ -1,7 +1,7 @@
 use tabled::Tabled;
 use common::admin::APIMissionInvalid;
 use common::mission::APIMission;
-use crate::formatter::{format_mission_time, format_timestamp_local, format_timestamp_utc};
+use crate::formatter::{format_mission_time, format_timestamp_utc};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[derive(Tabled)]

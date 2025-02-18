@@ -4,28 +4,61 @@ use common::mission::MissionKPIInfoFull;
 #[derive(Tabled)]
 pub struct MissionKPIPlayerGeneralTableEntry {
     pub player_name: String,
+    #[tabled(rename = "character")]
     pub kpi_character_type: String,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "w_kill")]
     pub weighted_kill: f64,
+    #[tabled(format = "{:.2}")]
+    #[tabled(rename = "w_damage")]
     pub weighted_damage: f64,
+    #[tabled(format = "{:.2}")]
+    #[tabled(rename = "priority")]
     pub priority_damage: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "revive")]
     pub revive_num: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "death")]
     pub death_num: f64,
+    #[tabled(format = "{:.2}")]
+    #[tabled(rename = "ff")]
     pub friendly_fire: f64,
+    #[tabled(format = "{:.2}")]
     pub nitra: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "supply")]
     pub supply_count: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "resource")]
     pub weighted_resource: f64,
 }
 
 #[derive(Tabled)]
 pub struct MissionKPIPlayerComponentTableEntry {
     pub name: String,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "source")]
     pub source_value: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "weighted")]
     pub weighted_value: f64,
+    #[tabled(format = "{:.0}")]
+    #[tabled(rename = "total_weighted")]
     pub mission_total_weighted_value: f64,
+    #[tabled(format = "{:.4}")]
+    #[tabled(rename = "raw")]
     pub raw_index: f64,
+    #[tabled(format = "{:.4}")]
+    #[tabled(rename = "corrected")]
     pub corrected_index: f64,
+    #[tabled(format = "{:.4}")]
+    #[tabled(rename = "transformed")]
     pub transformed_index: f64,
+    #[tabled(format = "{:.4}")]
+    #[tabled(rename = "assigned")]
     pub assigned_index: f64,
+    #[tabled(format = "{:.4}")]
     pub weight: f64,
 }
 

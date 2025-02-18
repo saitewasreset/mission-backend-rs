@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::str::FromStr;
 use tabled::{Table, Tabled};
 use common::kpi::{APIAssignedKPI, KPIComponent, PlayerAssignedKPIInfo};
@@ -13,7 +14,25 @@ pub struct PlayerAssignedKPIComponentEntry {
     pub delta_value: f64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Tabled)]
+pub struct PlayerListEntry {
+    pub id: usize,
+    pub name: String,
+    pub character: String,
+}
+
+
 pub fn prompt_for_value<T>(prompt: &str, valid_range: Option<&[T]>) -> T
+where
+    T: PartialEq + FromStr,
+{
+    let pred = |x: &T| valid_range.map_or(true, |range| range.contains(x));
+
+    prompt_for_value_pred(prompt, pred)
+}
+
+pub fn prompt_for_value_pred<T>(prompt: &str, predicate: impl Fn(&T) -> bool) -> T
 where
     T: PartialEq + FromStr,
 {
@@ -21,11 +40,7 @@ where
         let input = prompt_for_str::<_, &[&str]>(prompt, None);
 
         if let Ok(value) = input.parse::<T>() {
-            if let Some(valid_range) = valid_range {
-                if valid_range.contains(&value) {
-                    return value;
-                }
-            } else {
+            if predicate(&value) {
                 return value;
             }
         }
@@ -34,16 +49,15 @@ where
     }
 }
 
-
 pub fn prompt_for_str<T, U>(prompt: &str, valid_range: Option<U>) -> String
 where
     T: AsRef<str> + PartialEq,
     U: AsRef<[T]>,
 {
     let mut input = String::new();
-
     loop {
         print!("{}", prompt);
+        let _ = std::io::stdout().flush();
         std::io::stdin().read_line(&mut input).unwrap();
 
         input = input.trim().to_string();
@@ -143,7 +157,12 @@ pub fn read_assigned_kpi(client: &mut MissionMonitorClient<Authenticated>) -> Re
 
     let mission_id = prompt_for_value("Enter mission ID: ", Some(&mission_list.iter().map(|m| m.id).collect::<Vec<_>>()));
 
-    let selected_mission = &mission_list[mission_id as usize];
+    let mission_id_to_mission = mission_list
+        .into_iter()
+        .map(|mission| (mission.id, mission))
+        .collect::<HashMap<_, _>>();
+
+    let selected_mission = mission_id_to_mission.get(&mission_id).unwrap();
 
     println!("mission_id = {} timestamp = {}", selected_mission.id, format_timestamp_utc(selected_mission.begin_timestamp));
 
@@ -152,14 +171,24 @@ pub fn read_assigned_kpi(client: &mut MissionMonitorClient<Authenticated>) -> Re
     let selected_mission_info = Result::from(client.get_mission_general_info(selected_mission.id)).map_err(|e| format!("cannot get mission info: {}", e))?;
 
     println!("Player list for mission {}:", mission_id);
+    
+    let player_info_entry_list = selected_mission_info
+        .player_info
+        .iter()
+        .enumerate()
+        .map(|(id, (name, data))| {
+            PlayerListEntry {
+                id,
+                name: name.clone(),
+                character: data.character_game_id.clone(),
+            }
+        }).collect::<Vec<_>>();
 
-    let valid_player_name_list = selected_mission_info.player_info.keys().collect::<Vec<_>>();
+    println!("{}", Table::new(&player_info_entry_list));
 
-    for (player_name, player_data) in &selected_mission_info.player_info {
-        println!("name = {}, character = {}", player_name, player_data.character_game_id);
-    }
+    let target_player_id: usize = prompt_for_value_pred("Enter player ID: ", |val| val < &player_info_entry_list.len());
 
-    let target_player_name = prompt_for_str("Enter player name: ", Some(&valid_player_name_list));
+    let target_player_name = player_info_entry_list[target_player_id].name.clone();
 
     println!("Getting player kpi info...");
 
