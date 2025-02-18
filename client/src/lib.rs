@@ -301,8 +301,9 @@ pub fn cli_get_mission_invalid(client_config: ClientConfig) -> Result<(), Client
     let mut client = client_from_local_cookie_unchecked(client_config)?;
 
     let mission_invalid_list = Result::from(client.get_mission_invalid())?;
+    let mission_list = Result::from(client.get_api_mission_list())?;
 
-    mission_invalid::print_mission_invalid_list(mission_invalid_list);
+    mission_invalid::print_mission_invalid_list(mission_invalid_list, mission_list);
 
     Ok(())
 }
