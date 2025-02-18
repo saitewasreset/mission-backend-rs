@@ -15,7 +15,7 @@ pub struct APICacheStatusItem {
     pub last_error_message: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct APICacheStatus {
     pub working: bool,
     pub items: Vec<APICacheStatusItem>,
