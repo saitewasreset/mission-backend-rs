@@ -44,17 +44,17 @@ enum Commands {
     LoadMission,
     /// Load mapping data
     LoadMapping {
-        /// Path to the directory of mapping files
+        /// Path to the directory of mapping files, default: "./mapping"
         mapping_directory: Option<PathBuf>
     },
     /// Load KPI config data
     LoadKPIConfig {
-        /// Path to the directory of KPI config files
+        /// Path to the directory of KPI config files, default: "./kpi_config"
         kpi_config_directory: Option<PathBuf>
     },
     /// Load watchlist data
     LoadWatchlist {
-        /// Path to the watchlist file
+        /// Path to the watchlist file, default: "./watchlist.txt"
         watchlist_path: Option<PathBuf>
     },
     /// Update server cache
