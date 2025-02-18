@@ -48,7 +48,7 @@ impl API {
             API::Login => format!("{}/login", api_endpoint),
             API::CheckSession => format!("{}/check_session", api_endpoint),
             API::UpdateCache => format!("{}/cache/update_cache", api_endpoint),
-            API::GetCacheStatus => format!("{}/cache/get_cache_status", api_endpoint),
+            API::GetCacheStatus => format!("{}/cache/cache_status", api_endpoint),
             API::SetMissionInvalid => format!("{}/admin/set_mission_invalid", api_endpoint),
             API::GetMissionInvalid => format!("{}/admin/mission_invalid", api_endpoint),
             API::GetAssignedKPI => format!("{}/kpi/assigned_kpi", api_endpoint),
@@ -71,6 +71,9 @@ where
     fn from(response: reqwest::Result<reqwest::blocking::Response>) -> Self {
         match response {
             Ok(response) => {
+                if !response.status().is_success() {
+                    return APIResult::NetworkError(Box::new(ClientError::APIError(format!("API returned status code: {}", response.status()))));
+                }
                 match response.bytes() {
                     Ok(bytes) => {
                         match serde_json::from_slice::<APIResponse<T>>(&bytes[..]) {
