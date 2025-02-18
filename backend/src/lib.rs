@@ -47,7 +47,7 @@ impl AppState {
 
     pub fn check_access_token(&self, provided_token: &str) -> bool {
         if let Some(access_token) = &self.access_token {
-            provided_token == access_token
+            provided_token.trim() == access_token.trim()
         } else {
             true
         }
@@ -151,6 +151,7 @@ pub async fn login(app_state: Data<AppState>,
 
             HttpResponse::Ok().cookie(cookie).json(APIResponse::ok(()))
         } else {
+            warn!("invalid access token: {}", access_token);
             HttpResponse::Ok().json(APIResponse::<()>::unauthorized())
         }
     } else {
