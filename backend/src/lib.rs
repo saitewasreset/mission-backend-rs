@@ -73,6 +73,10 @@ impl AppState {
 
         new_uuid
     }
+
+    pub fn logout_session(&self, session_id: Uuid) {
+        self.valid_session.lock().unwrap().remove(&session_id);
+    }
 }
 
 #[derive(Deserialize)]
@@ -165,6 +169,18 @@ pub async fn login(app_state: Data<AppState>,
 pub async fn check_session(app_state: Data<AppState>,
                            request: HttpRequest) -> Json<APIResponse<()>> {
     if app_state.check_session(&request) {
+        Json(APIResponse::ok(()))
+    } else {
+        Json(APIResponse::unauthorized())
+    }
+}
+
+#[post("/logout")]
+pub async fn logout(app_state: Data<AppState>,
+                    request: HttpRequest) -> Json<APIResponse<()>> {
+    if app_state.check_session(&request) {
+        app_state.logout_session(Uuid::parse_str(request.cookie("session_id").unwrap().value()).unwrap());
+
         Json(APIResponse::ok(()))
     } else {
         Json(APIResponse::unauthorized())
