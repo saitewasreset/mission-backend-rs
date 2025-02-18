@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.1.0"
+version = "0.13.0"
 dependencies = [
  "log",
  "phf",
@@ -1642,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "mission-monitor-tools"
-version = "0.1.0"
+version = "0.13.0"
 dependencies = [
  "chrono",
  "clap",
