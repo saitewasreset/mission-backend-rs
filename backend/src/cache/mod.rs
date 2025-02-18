@@ -3,7 +3,7 @@ pub mod mission;
 pub mod manager;
 
 use crate::{api_parse_json_body, APIResponse, AppState};
-use actix_web::{get, web::{self, Data, Json}, HttpRequest};
+use actix_web::{get, post, web::{self, Data, Json}, HttpRequest};
 use actix_web::web::Bytes;
 use log::error;
 use common::cache::{APICacheStatus, APICacheType};
@@ -32,7 +32,7 @@ pub fn api_try_schedule_cache_all(cache_manager: &CacheManager) -> APIResponse<(
     }
 }
 
-#[get("/update_cache")]
+#[post("/update_cache")]
 async fn update_cache(
     app_state: Data<AppState>,
     cache_manager: Data<CacheManager>,
