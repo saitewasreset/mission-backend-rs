@@ -53,5 +53,6 @@ Mission Monitor，《深岩银河》游戏数据分析一站式解决方案。
 
 执行：
 
+- `mission-monitor-tools login`
 - `mission-monitor-tools server-init`
 
