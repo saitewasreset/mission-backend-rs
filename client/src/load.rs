@@ -60,7 +60,8 @@ pub fn compress(data: &[u8]) -> Vec<u8> {
 #[derive(Debug, Deserialize)]
 struct EntityListEntry {
     pub entity_game_id: String,
-    pub _entity_name: String,
+    #[serde(rename = "mapped_name")]
+    pub _mapped_name: String,
     pub priority: f64,
     pub driller: f64,
     pub gunner: f64,
