@@ -1,6 +1,6 @@
 use common::cache::{APICacheStatus, APICacheStatusItem};
 use tabled::{Table, Tabled};
-use crate::formatter::format_timestamp_utc;
+use crate::formatter::format_timestamp_local;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[derive(Tabled)]
@@ -14,7 +14,7 @@ struct CacheStatusTableItem {
 
 impl From<APICacheStatusItem> for CacheStatusTableItem {
     fn from(item: APICacheStatusItem) -> Self {
-        let last_update_str = format_timestamp_utc(item.last_update);
+        let last_update_str = format_timestamp_local(item.last_update);
 
         CacheStatusTableItem {
             cache_type: item.cache_type,
