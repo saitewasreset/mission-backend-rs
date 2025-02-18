@@ -3,13 +3,6 @@ use serde::{Serialize, Deserialize};
 use crate::damage::SupplyPack;
 
 #[derive(Serialize, Deserialize)]
-pub struct LoadResult {
-    pub load_count: i32,
-    pub decode_time: String,
-    pub load_time: String,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct APIMission {
     pub id: i32,
     pub begin_timestamp: i64,
@@ -83,7 +76,7 @@ pub struct MissionGeneralPlayerInfo {
     pub player_escaped: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct MissionGeneralData {
     #[serde(rename = "beginTimeStamp")]
     pub begin_timestamp: i64,
@@ -233,6 +226,13 @@ pub struct MissionKPIInfoFull {
     #[serde(rename = "missionKPI")]
     pub mission_kpi: f64,
     pub note: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct LoadResult {
+    pub load_count: i32,
+    pub decode_time: String,
+    pub load_time: String,
 }
 
 pub fn hazard_id_to_name(hazard_id: i16) -> String {
