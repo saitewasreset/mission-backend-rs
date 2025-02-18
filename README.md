@@ -27,7 +27,8 @@ Mission Monitor，《深岩银河》游戏数据分析一站式解决方案。
 
 标有`(_FILE)`的环境变量支持设置从文件中读取配置，可与 Docker secret 结合。
 
-例如：`A(_FILE)`表示先尝试读取环境变量`A_FILE`的值，并将该变量指向的文件的内容作为`A`的实际配置值；若环境变量`A_FILE`未设置，则尝试读取环境变量`A`，并将其值作为`A`的实际配置值。
+例如：`A(_FILE)`表示先尝试读取环境变量`A_FILE`的值，并将该变量指向的文件的内容作为`A`的实际配置值；若环境变量`A_FILE`
+未设置，则尝试读取环境变量`A`，并将其值作为`A`的实际配置值。
 
 环境变量：
 | 名称 | 含义 |
@@ -39,22 +40,18 @@ Mission Monitor，《深岩银河》游戏数据分析一站式解决方案。
 
 ## 管理工具
 
-管理工具集：`load_kpi、load_mapping、load_mission、load_watchlist`
+管理工具集：`mission-monitor-tools`
 
-运行：`cargo run --release --bin <tool_name>`
+运行：`cargo run --release --bin mission-monitor-tools`
 
-配置参见`config/config.json`
-
-默认读取配置文件路径为`PWD/config.json`，可通过`CONFIG_PATH`环境变量设置。
+配置参见`mission-monitor-tools config --help`
 
 ### 初始化
 
 对于需要详细分析游戏数据的玩家，将其游戏用户名加入`watchlist.txt`中；
 对于需要当作**输出型**侦察的玩家，将其游戏用户名加入`mapping/scout_special.txt`中。
 
-**按序**执行：
+执行：
 
-- `load_watchlist`
-- `load_kpi`
-- `load_mapping`
-- `load_mission`
+- `mission-monitor-tools server-init`
+
