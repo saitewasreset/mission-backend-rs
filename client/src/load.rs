@@ -182,15 +182,19 @@ fn get_file_content_parted(file_path: impl AsRef<Path>) -> Result<LogContent, Bo
 
     let mut combined_damage_info: Vec<LogDamageInfo> = Vec::with_capacity(damage_info.len());
 
-    for (i, current_damage_info) in damage_info.iter().enumerate() {
-        if !current_damage_info.combine_eq(&damage_info[range_begin_idx]) {
-            combined_damage_info.push(combine_range_damage(range_begin_idx, i, &damage_info));
+    if damage_info.len() > 0 {
+        for (i, current_damage_info) in damage_info.iter().enumerate() {
+            if !current_damage_info.combine_eq(&damage_info[range_begin_idx]) {
+                combined_damage_info.push(combine_range_damage(range_begin_idx, i, &damage_info));
 
-            range_begin_idx = i;
+                range_begin_idx = i;
+            }
         }
+
+        combined_damage_info.push(combine_range_damage(range_begin_idx, damage_info.len(), &damage_info));
     }
 
-    combined_damage_info.push(combine_range_damage(range_begin_idx, damage_info.len(), &damage_info));
+
 
     let kill_info_part = file_part_list[3];
 
